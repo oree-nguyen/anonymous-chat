@@ -69,6 +69,70 @@ function setView(view) {
   });
 }
 
+function setupVisualEffects() {
+  const particleField = $('#ambient-particles');
+  if (particleField) {
+    for (let index = 0; index < 40; index += 1) {
+      const particle = document.createElement('span');
+      particle.className = 'ambient-particle';
+      particle.style.setProperty('--particle-x', `${(index * 37.7) % 100}%`);
+      particle.style.setProperty('--particle-y', `${(index * 61.3) % 100}%`);
+      particle.style.setProperty('--particle-size', `${1 + (index % 3) * 0.6}px`);
+      particle.style.setProperty('--particle-duration', `${4 + (index % 9)}s`);
+      particle.style.setProperty('--particle-delay', `${-(index % 5)}s`);
+      particleField.append(particle);
+    }
+  }
+
+  document.querySelectorAll('.bento-card, .trust-console, .workflow-block, .chat-main, .security-panel, .closing-cta').forEach((card) => {
+    card.classList.add('spotlight-card');
+    const layer = document.createElement('span');
+    layer.className = 'spotlight-layer';
+    layer.setAttribute('aria-hidden', 'true');
+    card.prepend(layer);
+    card.addEventListener('pointermove', (event) => {
+      const bounds = card.getBoundingClientRect();
+      card.style.setProperty('--spotlight-x', `${event.clientX - bounds.left}px`);
+      card.style.setProperty('--spotlight-y', `${event.clientY - bounds.top}px`);
+    });
+    card.addEventListener('pointerleave', () => {
+      card.style.setProperty('--spotlight-x', '-500px');
+      card.style.setProperty('--spotlight-y', '-500px');
+    });
+  });
+
+  if (!matchMedia('(pointer: coarse)').matches) {
+    document.querySelectorAll('[data-magnetic]').forEach((button) => {
+      button.addEventListener('pointermove', (event) => {
+        const bounds = button.getBoundingClientRect();
+        button.style.setProperty('--magnetic-x', `${(event.clientX - (bounds.left + bounds.width / 2)) * 0.12}px`);
+        button.style.setProperty('--magnetic-y', `${(event.clientY - (bounds.top + bounds.height / 2)) * 0.12}px`);
+      });
+      button.addEventListener('pointerleave', () => {
+        button.style.setProperty('--magnetic-x', '0px');
+        button.style.setProperty('--magnetic-y', '0px');
+      });
+    });
+  }
+
+  const hero = $('.hero');
+  const heroImage = $('.hero-backdrop img');
+  if (hero && heroImage && !prefersReducedMotion()) {
+    let ticking = false;
+    const updateParallax = () => {
+      const offset = Math.min(120, Math.max(0, scrollY - hero.offsetTop) * 0.2);
+      heroImage.style.setProperty('--hero-parallax', `${offset}px`);
+      ticking = false;
+    };
+    addEventListener('scroll', () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(updateParallax);
+    }, { passive: true });
+    updateParallax();
+  }
+}
+
 function setTheme(theme) {
   const selected = theme === 'light' ? 'light' : 'dark';
   document.documentElement.dataset.theme = selected;
@@ -861,6 +925,7 @@ updateSecurityState();
 setHandshakeStage('choice');
 await initializeSessionPersistence();
 if (location.hash === '#app') setView('app');
+setupVisualEffects();
 
 const observer = 'IntersectionObserver' in window && !prefersReducedMotion()
   ? new IntersectionObserver((entries, activeObserver) => {

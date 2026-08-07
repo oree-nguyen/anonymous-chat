@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Local-first encrypted chat with direct WebRTC and manual emoji transport. No account and no message server.">
-  <meta name="theme-color" content="#090b12">
+  <meta name="theme-color" content="#0A0A0C">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' stun:; img-src 'self' blob: data:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
   <title>anonymous-chat | local-first encrypted chat</title>
@@ -13,7 +13,7 @@
 </head>
 <body data-view="landing">
   <a class="skip-link" href="#landing-main" data-i18n="skipContent">Skip to content</a>
-  <div class="ambient" aria-hidden="true"><span></span><span></span></div>
+  <div class="ambient" aria-hidden="true"><div id="ambient-particles"></div><span></span><span></span><span></span></div>
 
   <div class="privacy-banner" id="privacy-banner" role="note">
     <p data-i18n="privacyBanner">Use a private browsing window for sensitive conversations. Closing this notice does not change how data is stored.</p>
@@ -47,12 +47,13 @@
 
   <main id="landing-main" class="landing-view">
     <section class="hero page-width" aria-labelledby="page-title">
+      <div class="hero-backdrop" aria-hidden="true"><img src="assets/hero-bg.jpg" alt=""><div></div></div>
       <div class="hero-copy">
         <p class="eyebrow hero-reveal" data-i18n="localOnly">ENCRYPTION STAYS IN THIS BROWSER</p>
         <h1 id="page-title" class="hero-reveal" data-i18n="landingTitle">Say less to the network.</h1>
         <p class="hero-lede hero-reveal" data-i18n="landingSubtitle">Private conversation without an account, a message database, or a hidden relay. Encrypt here, then connect directly or carry emoji ciphertext yourself.</p>
         <div class="hero-actions hero-reveal">
-          <button class="primary-button hero-cta" type="button" data-open-app data-i18n="startPrivateChat">Start a private chat</button>
+          <button class="primary-button hero-cta" type="button" data-open-app data-magnetic data-i18n="startPrivateChat">Start a private chat</button>
           <a class="text-link" href="#how-it-works" data-i18n="seeHow">See how it works</a>
         </div>
         <p class="hero-footnote hero-reveal" data-i18n="noInstall">No install. No account. Session keys stay in memory.</p>
@@ -108,7 +109,7 @@
     <section class="closing-cta page-width reveal">
       <p class="eyebrow" data-i18n="readyEyebrow">READY WHEN YOU ARE</p>
       <h2 data-i18n="closingTitle">Start with a code, not an account.</h2>
-      <button class="primary-button hero-cta" type="button" data-open-app data-i18n="openSecureWorkspace">Open secure workspace</button>
+      <button class="primary-button hero-cta" type="button" data-open-app data-magnetic data-i18n="openSecureWorkspace">Open secure workspace</button>
     </section>
   </main>
 
