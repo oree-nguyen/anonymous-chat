@@ -1,0 +1,12 @@
+{
+  "privacyBanner": "Nutze für vertrauliche Gespräche ein privates Browserfenster.",
+  "dismiss": "Schließen", "language": "Sprache", "clearSession": "Sitzung löschen",
+  "localOnly": "DIE VERSCHLÜSSELUNG BLEIBT IN DIESEM BROWSER", "title": "Private Worte. Gewöhnliche Emoji.",
+  "subtitle": "Lokal verschlüsseln, dann direkt sprechen oder den Geheimtext über einen vertrauten Kanal übertragen.",
+  "ipTitle": "Vor der Direktverbindung", "ipDisclosure": "P2P zeigt der anderen Person deine IP-Adresse. Googles STUN-Server sieht beim Verbinden beide IPs, überträgt aber keine Nachrichteninhalte.",
+  "liveMode": "Direkter Chat", "manualMode": "Manuelle Passphrase", "otpMode": "Einmalblock",
+  "manualStatus": "Manueller Modus", "notConnected": "Keine direkte Verbindung aktiv.", "startConversation": "Gespräch starten", "joinConversation": "Gespräch beitreten",
+  "createOffer": "Angebot erstellen", "createAnswer": "Antwort erstellen", "copy": "Kopieren", "send": "Senden", "encrypt": "Verschlüsseln", "decrypt": "Entschlüsseln",
+  "passphrase": "Gemeinsame Passphrase", "plaintext": "Zu verschlüsselnde Nachricht", "incomingEmoji": "Empfangene Emoji", "clearNow": "Jetzt löschen", "cancel": "Abbrechen",
+  "footer": "Kein Konto. Kein Nachrichtenserver. Keine stillen Fehler."
+}

@@ -1,0 +1,40 @@
+flowchart TB
+  subgraph Host["GitHub Pages: static files only"]
+    UI["index.html, style.css, app.js, i18n"]
+    Crypto["crypto: AES-GCM, PBKDF2, ECDH, HKDF ratchet, OTP, emoji codec"]
+    RTCCode["webrtc: manual handshake, peer transport, fallback"]
+    Visual["qr: experimental visual matrix, not exposed in UI"]
+  end
+
+  subgraph A["Browser A"]
+    AUI["Accessible local UI"]
+    ACrypto["Web Crypto API"]
+    ARTC["RTCPeerConnection and RTCDataChannel"]
+    ALS["localStorage: contact metadata, positions, OTP offsets"]
+  end
+
+  subgraph B["Browser B"]
+    BUI["Accessible local UI"]
+    BCrypto["Web Crypto API"]
+    BRTC["RTCPeerConnection and RTCDataChannel"]
+    BLS["localStorage: contact metadata, positions, OTP offsets"]
+  end
+
+  External["User-selected external channel"]
+  STUN["Google STUN: connection discovery only"]
+  Manual["Manual emoji fallback with preserved ratchets"]
+
+  Host -->|"initial HTTPS load"| A
+  Host -->|"initial HTTPS load"| B
+  AUI --> ACrypto --> ALS
+  BUI --> BCrypto --> BLS
+  ARTC -.->|"ICE gathering"| STUN
+  BRTC -.->|"ICE gathering"| STUN
+  ACrypto -->|"emoji offer: SDP and ECDH public key"| External
+  External --> BCrypto
+  BCrypto -->|"emoji answer: SDP and ECDH public key"| External
+  External --> ACrypto
+  ARTC ===|"encrypted binary messages over direct data channel"| BRTC
+  ARTC -.->|"unexpected close"| Manual
+  BRTC -.->|"unexpected close"| Manual
+  Manual --> External

@@ -1,0 +1,37 @@
+sequenceDiagram
+  participant A as Browser A
+  participant Out as External channel
+  participant STUN as Google STUN
+  participant B as Browser B
+
+  Note over A,B: Manual signaling and ECDH setup
+  A->>A: Generate P-256 key pair and WebRTC offer
+  A->>STUN: Gather all ICE candidates
+  A->>Out: Emoji envelope with offer and public key A
+  Out->>B: User transfers envelope
+  B->>B: Decode, generate P-256 key pair, derive shared root
+  B->>STUN: Gather all ICE candidates
+  B->>Out: Emoji envelope with answer and public key B
+  Out->>A: User transfers envelope
+  A->>A: Decode answer and derive matching shared root
+  A->>B: Compare 8-character safety number out of band
+
+  Note over A,B: Direct encrypted conversation
+  A->>A: Sort public keys; derive separate A-to-B and B-to-A chains
+  B->>B: Sort public keys; derive the same directional chains
+  loop Each directional message n
+    A->>A: Derive message key and next chain key with HKDF
+    A->>A: Pad and encrypt with AES-256-GCM
+    A->>B: Send authenticated envelope with sender direction
+    B->>B: Derive on temporary ratchet state
+    B->>B: Authenticate and decrypt, then commit ratchet state
+  end
+
+  alt Data channel closes unexpectedly
+    A->>A: Keep send and receive ratchet positions
+    A->>A: Pack next encrypted envelope as emoji
+    A->>Out: User transfers each fallback message
+    Out->>B: User pastes encrypted emoji
+    B->>B: Authenticate, decrypt, and continue ratchet
+    Note over A,B: Fresh SDP reconnect preserves existing message ratchets
+  end

@@ -1,0 +1,12 @@
+{
+  "privacyBanner": "处理敏感对话时，请使用隐私浏览窗口。",
+  "dismiss": "关闭", "language": "语言", "clearSession": "清除会话",
+  "localOnly": "加密仅在此浏览器中进行", "title": "私密话语，普通表情。",
+  "subtitle": "在本地加密，然后直接交谈，或通过你已信任的任意渠道传递密文。",
+  "ipTitle": "直接连接前", "ipDisclosure": "P2P 会向对方公开你的 IP。连接时 Google STUN 服务器会看到双方 IP，但不会传输消息内容。",
+  "liveMode": "直接聊天", "manualMode": "手动口令", "otpMode": "一次性密码本",
+  "manualStatus": "手动模式", "notConnected": "当前没有直接连接。", "startConversation": "开始对话", "joinConversation": "加入对话",
+  "createOffer": "创建提议", "createAnswer": "创建应答", "copy": "复制", "send": "发送", "encrypt": "加密", "decrypt": "解密",
+  "passphrase": "共享口令", "plaintext": "要加密的消息", "incomingEmoji": "收到的表情", "clearNow": "立即清除", "cancel": "取消",
+  "footer": "无需账户。没有消息服务器。错误绝不静默。"
+}

@@ -1,0 +1,12 @@
+{
+  "privacyBanner": "민감한 대화에는 비공개 브라우징 창을 사용하세요.",
+  "dismiss": "닫기", "language": "언어", "clearSession": "세션 지우기",
+  "localOnly": "암호화는 이 브라우저 안에서만 실행됩니다", "title": "비밀스러운 말. 평범한 이모지.",
+  "subtitle": "기기에서 암호화한 뒤 직접 전송하거나 이미 신뢰하는 채널로 암호문을 옮기세요.",
+  "ipTitle": "직접 연결 전 확인", "ipDisclosure": "P2P는 상대방에게 IP 주소를 공개합니다. 연결 중 Google STUN 서버도 양쪽 IP를 보지만 메시지 내용은 전달하지 않습니다.",
+  "liveMode": "직접 채팅", "manualMode": "수동 암호 문구", "otpMode": "일회용 패드",
+  "manualStatus": "수동 모드", "notConnected": "직접 연결이 없습니다.", "startConversation": "대화 시작", "joinConversation": "대화 참여",
+  "createOffer": "제안 만들기", "createAnswer": "응답 만들기", "copy": "복사", "send": "보내기", "encrypt": "암호화", "decrypt": "복호화",
+  "passphrase": "공유 암호 문구", "plaintext": "암호화할 메시지", "incomingEmoji": "받은 이모지", "clearNow": "지금 지우기", "cancel": "취소",
+  "footer": "계정 없음. 메시지 서버 없음. 조용한 실패 없음."
+}

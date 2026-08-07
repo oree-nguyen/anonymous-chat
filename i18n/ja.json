@@ -1,0 +1,12 @@
+{
+  "privacyBanner": "機密性の高い会話にはプライベートブラウジングを使用してください。",
+  "dismiss": "閉じる", "language": "言語", "clearSession": "セッションを消去",
+  "localOnly": "暗号化はこのブラウザ内だけで実行されます", "title": "秘密の言葉を、普通の絵文字に。",
+  "subtitle": "端末内で暗号化し、直接送信するか、普段使う任意の経路で暗号文を運びます。",
+  "ipTitle": "直接接続の前に", "ipDisclosure": "P2Pでは相手にIPアドレスが見えます。接続時にはGoogleのSTUNサーバーにも双方のIPが見えますが、メッセージ内容は通りません。",
+  "liveMode": "直接チャット", "manualMode": "手動パスフレーズ", "otpMode": "ワンタイムパッド",
+  "manualStatus": "手動モード", "notConnected": "直接接続はありません。", "startConversation": "会話を開始", "joinConversation": "会話に参加",
+  "createOffer": "オファーを作成", "createAnswer": "回答を作成", "copy": "コピー", "send": "送信", "encrypt": "暗号化", "decrypt": "復号",
+  "passphrase": "共有パスフレーズ", "plaintext": "暗号化するメッセージ", "incomingEmoji": "受信した絵文字", "clearNow": "今すぐ消去", "cancel": "キャンセル",
+  "footer": "アカウントなし。メッセージサーバーなし。無言の失敗なし。"
+}

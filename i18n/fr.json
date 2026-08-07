@@ -1,0 +1,12 @@
+{
+  "privacyBanner": "Utilisez une fenêtre de navigation privée pour les conversations sensibles.",
+  "dismiss": "Fermer", "language": "Langue", "clearSession": "Effacer la session",
+  "localOnly": "LE CHIFFREMENT RESTE DANS CE NAVIGATEUR", "title": "Des mots privés. Des emoji ordinaires.",
+  "subtitle": "Chiffrez localement, puis échangez directement ou transportez le texte chiffré par un canal de confiance.",
+  "ipTitle": "Avant la connexion directe", "ipDisclosure": "Le P2P révèle votre adresse IP à l'autre personne. Le serveur STUN de Google voit les deux IP pendant la connexion, sans transporter le contenu.",
+  "liveMode": "Discussion directe", "manualMode": "Phrase secrète", "otpMode": "Masque jetable",
+  "manualStatus": "Mode manuel", "notConnected": "Aucune connexion directe active.", "startConversation": "Démarrer une conversation", "joinConversation": "Rejoindre une conversation",
+  "createOffer": "Créer une offre", "createAnswer": "Créer une réponse", "copy": "Copier", "send": "Envoyer", "encrypt": "Chiffrer", "decrypt": "Déchiffrer",
+  "passphrase": "Phrase secrète partagée", "plaintext": "Message à chiffrer", "incomingEmoji": "Emoji reçus", "clearNow": "Effacer", "cancel": "Annuler",
+  "footer": "Aucun compte. Aucun serveur de messages. Aucun échec silencieux."
+}
