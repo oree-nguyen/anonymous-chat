@@ -3,12 +3,14 @@ import { estimatePassphraseStrength } from './crypto/kdf.js';
 import { encryptPassphraseMessage, decryptPassphraseMessage, encryptRatchetMessage, decryptRatchetMessage } from './crypto/message.js';
 import { packPayload, unpackPayload } from './crypto/emoji-codec.js';
 import { createRatchetState, RATCHET_DIRECTIONS } from './crypto/ratchet.js';
-import { fromUtf8, concatBytes } from './crypto/bytes.js';
+import { RatchetState } from './crypto/ratchet.js';
+import { fromUtf8, concatBytes, zeroize } from './crypto/bytes.js';
 import { generateOtpKey, otpEncrypt, otpDecrypt, OtpUsageTracker, OTP_DIRECTIONS, otpDirectionCode, otpDirectionFromCode } from './crypto/otp.js';
 import { PeerTransport } from './webrtc/peer.js';
 import { decodeHandshake } from './webrtc/handshake.js';
 import { FallbackController } from './webrtc/fallback.js';
 import { roleForPublicKeys } from './crypto/ecdh.js';
+import { configureSessionPersistence, deleteSessionState, getSessionConfig, hasStoredSessionState, loadSessionState, saveSessionState, updatePinFailure } from './session-vault.js';
 
 const $ = (selector) => document.querySelector(selector);
 const STORAGE_PREFIX = 'anonymous-chat:';
@@ -23,6 +25,21 @@ let errorTimer = null;
 let conversationMessages = [];
 let connectionMode = 'manual';
 let safetyConfirmed = false;
+let handshakeRole = null;
+let handshakeStage = 'choice';
+let sessionConfig = null;
+let sessionPin = '';
+let restoredRemotePublicKey = null;
+
+const handshakeProgress = {
+  choice: null,
+  'a-enter': 1,
+  'a-wait': 2,
+  'b-paste': 1,
+  'b-response': 2,
+  verifying: 3,
+  chatting: 4,
+};
 
 function prefersReducedMotion() {
   return matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -60,6 +77,81 @@ function setTheme(theme) {
     button.setAttribute('aria-pressed', String(selected === 'light'));
     button.title = selected === 'light' ? t('switchDark') : t('switchLight');
   });
+}
+
+function toggleElements(elements, hidden) {
+  elements.filter(Boolean).forEach((element) => element.classList.toggle('is-hidden', hidden));
+}
+
+function setHandshakeStage(stage) {
+  handshakeStage = stage;
+  const rolePicker = $('#handshake-role-picker');
+  const setup = $('#live-setup');
+  const starter = $('#create-offer')?.closest('.workflow-block');
+  const joiner = $('#create-answer')?.closest('.workflow-block');
+  const chatArea = $('#chat-area');
+  const chatMain = $('.chat-main');
+  const securityPanel = $('.chat-area > .security-panel');
+  const progress = $('#handshake-progress');
+  const progressLabel = $('#handshake-progress-label');
+  const restore = $('#session-restore');
+  const stages = handshakeProgress[stage];
+
+  transition(() => {
+    rolePicker?.classList.toggle('is-hidden', stage !== 'choice');
+    restore?.classList.toggle('is-hidden', stage !== 'restore-pin');
+    setup?.classList.toggle('is-hidden', !['a-enter', 'a-wait', 'b-paste', 'b-response'].includes(stage));
+    progress?.classList.toggle('is-hidden', stages === null || stages === undefined);
+    if (progressLabel && stages !== null && stages !== undefined) {
+      const progressKey = stage === 'chatting' ? 'stepFourOfFour' : stage === 'verifying' ? 'stepThreeOfFour' : ['a-wait', 'b-response'].includes(stage) ? 'stepTwoOfFour' : 'stepOneOfFour';
+      progressLabel.textContent = t(progressKey);
+    }
+    progress?.querySelectorAll('.progress-dots span').forEach((dot, index) => {
+      dot.classList.toggle('is-current', index === stages - 1);
+      dot.classList.toggle('is-complete', index < stages - 1);
+    });
+
+    toggleElements([starter], !['a-enter', 'a-wait'].includes(stage));
+    toggleElements([joiner], !['b-paste', 'b-response'].includes(stage));
+    if (starter) {
+      const contactLabel = starter.querySelector('label[for="contact-name"]');
+      const contact = $('#contact-name');
+      const note = contact?.nextElementSibling?.nextElementSibling;
+      const create = $('#create-offer');
+      toggleElements([contactLabel, contact, note, create], stage !== 'a-enter');
+      toggleElements([$('#offer-output-block'), $('#answer-input-block')], stage !== 'a-wait');
+    }
+    if (joiner) {
+      const offerLabel = joiner.querySelector('label[for="offer-input"]');
+      const offer = $('#offer-input');
+      const create = $('#create-answer');
+      const ip = joiner.querySelector('.ip-disclosure');
+      toggleElements([offerLabel, offer, create], stage !== 'b-paste');
+      toggleElements([$('#answer-output-block')], stage !== 'b-response');
+      toggleElements([ip], stage !== 'b-response');
+    }
+
+    const verifying = stage === 'verifying';
+    const chatting = stage === 'chatting';
+    chatArea?.classList.toggle('is-hidden', !verifying && !chatting);
+    chatArea?.classList.toggle('is-verifying', verifying);
+    chatMain?.classList.toggle('is-chat-hidden', verifying);
+    securityPanel?.classList.toggle('is-hidden', !verifying);
+    $('#open-safety')?.classList.toggle('is-hidden', !chatting);
+    if (chatting) $('#open-safety')?.setAttribute('aria-expanded', 'false');
+  });
+  updateSecurityState();
+}
+
+function enterVerifyingStage() {
+  setHandshakeStage('verifying');
+  updateSecurityState();
+}
+
+function enterChatting() {
+  if (!safetyConfirmed) return;
+  setHandshakeStage('chatting');
+  $('#chat-message')?.focus();
 }
 
 function reportError(error, publicMessage = null) {
@@ -129,6 +221,10 @@ function updateSecurityState() {
   state.dataset.state = securityMode;
   state.querySelector('.status-symbol').textContent = securityMode === 'safe' ? '✓' : securityMode === 'manual' ? '◇' : '!';
   label.textContent = t(labelKey);
+  const compactLabel = $('#compact-security-label');
+  if (compactLabel) compactLabel.textContent = t(labelKey);
+  const compactSymbol = $('#open-safety .status-symbol');
+  if (compactSymbol) compactSymbol.textContent = securityMode === 'safe' ? '✓' : securityMode === 'manual' ? '◇' : '!';
   message.disabled = !ready;
   send.disabled = !ready;
   confirm.disabled = !sendRatchet || safetyConfirmed;
@@ -189,6 +285,88 @@ function persistConversation() {
   };
   localStorage.setItem(storageKey, JSON.stringify(record));
   populateContacts();
+  void persistEncryptedSession();
+}
+
+async function persistEncryptedSession() {
+  if (!sessionConfig || !sendRatchet || !receiveRatchet) return;
+  const send = sendRatchet.exportPersistenceState();
+  const receive = receiveRatchet.exportPersistenceState();
+  const state = {
+    nickname: $('#contact-name').value.trim() || 'contact',
+    remotePublicKey: transport?.remotePublicKey ? Array.from(transport.remotePublicKey) : restoredRemotePublicKey,
+    safetyNumber: $('#safety-number')?.textContent,
+    role: handshakeRole,
+    send,
+    receive,
+  };
+  try {
+    await saveSessionState(sessionConfig, state, sessionPin);
+  } catch (error) {
+    reportError(error, t('sessionSaveFailed'));
+  } finally {
+    zeroize(send.chainKey);
+    zeroize(receive.chainKey);
+  }
+}
+
+function selectedSessionMethod() {
+  return document.querySelector('input[name="session-method"]:checked')?.value || 'pin';
+}
+
+function refreshSessionOptions() {
+  const enabled = $('#remember-session')?.checked === true;
+  $('#session-options')?.classList.toggle('is-hidden', !enabled);
+  $('#pin-fields')?.classList.toggle('is-hidden', selectedSessionMethod() !== 'pin');
+}
+
+function setSessionNote(message) {
+  const note = $('#session-persistence-note');
+  if (note) note.textContent = message;
+}
+
+function restoreRatchets(state, pin = '') {
+  sendRatchet = RatchetState.restorePersistenceState(state.send);
+  receiveRatchet = RatchetState.restorePersistenceState(state.receive);
+  restoredRemotePublicKey = Array.isArray(state.remotePublicKey) ? new Uint8Array(state.remotePublicKey) : null;
+  handshakeRole = state.role || 'start';
+  safetyConfirmed = true;
+  sessionPin = pin;
+  $('#contact-name').value = state.nickname || 'contact';
+  $('#safety-number').textContent = state.safetyNumber || '--------';
+  fallback = new FallbackController({ sendRatchet, receiveRatchet, persist: persistConversation });
+  transport = null;
+  setConnectionMode('manual');
+  renderConversation([]);
+  enterChatting();
+}
+
+async function restoreConfiguredSession(config, pin = '') {
+  const state = await loadSessionState(config, pin);
+  if (!state) throw new Error('No persisted session was found.');
+  restoreRatchets(state, pin);
+}
+
+async function initializeSessionPersistence() {
+  sessionConfig = getSessionConfig();
+  if (!sessionConfig) return;
+  $('#remember-session').checked = true;
+  refreshSessionOptions();
+  if (sessionConfig.method === 'browser') {
+    try {
+      if (await hasStoredSessionState(sessionConfig)) await restoreConfiguredSession(sessionConfig);
+      else setHandshakeStage('choice');
+    } catch (error) {
+      await deleteSessionState();
+      sessionConfig = null;
+      $('#remember-session').checked = false;
+      refreshSessionOptions();
+      reportError(error, t('browserPersistenceUnavailable'));
+      setHandshakeStage('choice');
+    }
+    return;
+  }
+  if (await hasStoredSessionState(sessionConfig)) setHandshakeStage('restore-pin');
 }
 
 function populateContacts() {
@@ -248,6 +426,10 @@ function scrubLegacyConversationStorage() {
 }
 
 function bindTransport(instance) {
+  instance.addEventListener('open', () => {
+    if (handshakeRole === 'join' && handshakeStage === 'b-response') enterVerifyingStage();
+    if (handshakeRole === 'start' && handshakeStage === 'a-wait' && safetyConfirmed) enterChatting();
+  });
   instance.addEventListener('message', (event) => {
     runDecryption(async () => {
       const plaintext = await decryptRatchetMessage(receiveRatchet, new Uint8Array(event.detail));
@@ -258,7 +440,7 @@ function bindTransport(instance) {
   instance.addEventListener('channelerror', () => reportError(new Error(t('directChannelError'))));
 }
 
-async function initializeConversation() {
+async function initializeConversation({ deferVerification = false } = {}) {
   if (!transport?.rootKey) throw new Error(t('rootKeyMissing'));
   if (!sendRatchet || !receiveRatchet) {
     const role = roleForPublicKeys(transport.localPublicKey, transport.remotePublicKey);
@@ -279,7 +461,6 @@ async function initializeConversation() {
   fallback = new FallbackController({ sendRatchet, receiveRatchet, persist: persistConversation });
   fallback.addEventListener('modechange', (event) => setConnectionMode(event.detail));
   fallback.attach(transport);
-  $('#chat-area').classList.remove('is-hidden');
   $('#reconnect').disabled = false;
   $('#safety-number').textContent = await transport.getSafetyNumber();
   $('#safety-number').title = t('verifySafety');
@@ -287,6 +468,7 @@ async function initializeConversation() {
   updateSecurityState();
   renderConversation();
   persistConversation();
+  if (!deferVerification) enterVerifyingStage();
 }
 
 function disposeConversationSecrets() {
@@ -307,7 +489,20 @@ function freshTransport() {
   return transport;
 }
 
+$('#choose-start').addEventListener('click', () => {
+  handshakeRole = 'start';
+  setHandshakeStage('a-enter');
+  $('#contact-name').focus();
+});
+
+$('#choose-join').addEventListener('click', () => {
+  handshakeRole = 'join';
+  setHandshakeStage('b-paste');
+  $('#offer-input').focus();
+});
+
 $('#create-offer').addEventListener('click', (event) => run(async () => {
+  handshakeRole = 'start';
   setConnectionMode('connecting');
   disposeConversationSecrets();
   renderConversation([]);
@@ -317,9 +512,11 @@ $('#create-offer').addEventListener('click', (event) => run(async () => {
   $('#offer-output-block').classList.remove('is-hidden');
   $('#answer-input-block').classList.remove('is-hidden');
   $('#connection-detail').textContent = t('offerReady');
+  setHandshakeStage('a-wait');
 }, event.currentTarget));
 
 $('#create-answer').addEventListener('click', (event) => run(async () => {
+  handshakeRole = 'join';
   const code = $('#offer-input').value.trim();
   if (!code) throw new Error(t('offerRequired'));
   const decoded = decodeHandshake(code);
@@ -335,14 +532,17 @@ $('#create-answer').addEventListener('click', (event) => run(async () => {
   $('#answer-output').value = answer;
   $('#answer-output-block').classList.remove('is-hidden');
   $('#connection-detail').textContent = t('answerReady');
-  if (!sendRatchet) await initializeConversation();
+  if (!sendRatchet) await initializeConversation({ deferVerification: true });
   else if (peer.rootKey) {
     peer.rootKey.fill(0);
     peer.rootKey = null;
   }
+  setHandshakeStage('b-response');
+  if (peer.channel?.readyState === 'open') enterVerifyingStage();
 }, event.currentTarget));
 
 $('#accept-answer').addEventListener('click', (event) => run(async () => {
+  handshakeRole = 'start';
   if (!transport) throw new Error(t('createOfferFirst'));
   const code = $('#answer-input').value.trim();
   if (!code) throw new Error(t('answerRequired'));
@@ -355,9 +555,11 @@ $('#accept-answer').addEventListener('click', (event) => run(async () => {
     transport.rootKey = null;
   }
   setConnectionMode(transport.channel?.readyState === 'open' ? 'p2p' : 'connecting');
+  if (sendRatchet && safetyConfirmed && transport.channel?.readyState === 'open') enterChatting();
 }, event.currentTarget));
 
 $('#reconnect').addEventListener('click', (event) => run(async () => {
+  handshakeRole = 'start';
   if (!transport || !sendRatchet) throw new Error(t('conversationMissing'));
   setConnectionMode('connecting');
   const code = await transport.createOffer({ reconnect: true });
@@ -365,6 +567,7 @@ $('#reconnect').addEventListener('click', (event) => run(async () => {
   $('#offer-output-block').classList.remove('is-hidden');
   $('#answer-input-block').classList.remove('is-hidden');
   $('#connection-detail').textContent = t('reconnectReady');
+  setHandshakeStage('a-wait');
   $('#live-setup').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }, event.currentTarget));
 
@@ -487,7 +690,104 @@ document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click',
     });
     document.querySelectorAll('.mode-panel').forEach((panel) => panel.classList.add('is-hidden'));
     $(`#${tab.dataset.mode}-panel`).classList.remove('is-hidden');
+    const advanced = $('#advanced-panel');
+    if (tab.dataset.mode !== 'live') {
+      advanced?.classList.remove('is-hidden');
+      $('#advanced-settings')?.setAttribute('aria-expanded', 'true');
+    }
   });
+}));
+
+$('#advanced-settings').addEventListener('click', () => {
+  const panel = $('#advanced-panel');
+  const expanded = $('#advanced-settings').getAttribute('aria-expanded') === 'true';
+  panel.classList.toggle('is-hidden', expanded);
+  $('#advanced-settings').setAttribute('aria-expanded', String(!expanded));
+});
+
+$('#remember-session').addEventListener('change', async (event) => {
+  if (!event.target.checked) {
+    await deleteSessionState();
+    sessionConfig = null;
+    sessionPin = '';
+    setSessionNote(t('sessionOffNote'));
+  }
+  refreshSessionOptions();
+});
+document.querySelectorAll('input[name="session-method"]').forEach((input) => input.addEventListener('change', refreshSessionOptions));
+$('#session-pin').addEventListener('input', (event) => {
+  const value = event.target.value.trim();
+  const weak = /^(?:0+|1+|123456|12345678|987654|98765432|\d{6})$/.test(value);
+  $('#pin-warning').classList.toggle('is-hidden', !weak);
+});
+$('#save-session-setting').addEventListener('click', () => run(async () => {
+  if (!$('#remember-session').checked) {
+    await deleteSessionState();
+    sessionConfig = null;
+    sessionPin = '';
+    setSessionNote(t('sessionOffNote'));
+    return;
+  }
+  const method = selectedSessionMethod();
+  const pin = $('#session-pin').value.trim();
+  if (method === 'pin' && (!/^\d{6,}$/.test(pin) || pin !== $('#session-pin-confirm').value.trim())) {
+    throw new Error(t('pinMismatch'));
+  }
+  await deleteSessionState();
+  sessionConfig = configureSessionPersistence(method, pin);
+  sessionPin = method === 'pin' ? pin : '';
+  try {
+    if (sendRatchet && receiveRatchet) await persistEncryptedSession();
+  } catch (error) {
+    await deleteSessionState();
+    sessionConfig = null;
+    $('#remember-session').checked = false;
+    refreshSessionOptions();
+    throw new Error(method === 'browser' ? t('browserPersistenceUnavailable') : t('sessionSaveFailed'), { cause: error });
+  }
+  $('#session-pin').value = '';
+  $('#session-pin-confirm').value = '';
+  $('#pin-warning').classList.add('is-hidden');
+  setSessionNote(t('sessionSaved'));
+}), $('#save-session-setting'));
+
+$('#restore-session').addEventListener('click', () => run(async () => {
+  const button = $('#restore-session');
+  const config = sessionConfig || getSessionConfig();
+  const pin = $('#restore-pin').value.trim();
+  if (!config) throw new Error(t('restoreFailed'));
+  button.disabled = true;
+  try {
+    await restoreConfiguredSession(config, pin);
+    updatePinFailure(config, 0);
+    $('#restore-error').classList.add('is-hidden');
+  } catch (error) {
+    const attempts = (config.failedAttempts || 0) + 1;
+    updatePinFailure(config, attempts);
+    $('#restore-error').classList.remove('is-hidden');
+    if (attempts >= 5) {
+      await deleteSessionState();
+      sessionConfig = null;
+      $('#remember-session').checked = false;
+      refreshSessionOptions();
+      setHandshakeStage('choice');
+      throw new Error(t('pinAttemptsExceeded'));
+    }
+    const delay = Math.min(8000, 500 * (2 ** (attempts - 1)));
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    throw error;
+  } finally {
+    button.disabled = false;
+  }
+}), $('#restore-session'));
+
+$('#forget-session').addEventListener('click', () => run(async () => {
+  await deleteSessionState();
+  sessionConfig = null;
+  sessionPin = '';
+  $('#remember-session').checked = false;
+  refreshSessionOptions();
+  setHandshakeStage('choice');
 }));
 
 document.querySelectorAll('.copy-button').forEach((button) => button.addEventListener('click', () => run(async () => {
@@ -511,7 +811,13 @@ $('#confirm-safety').addEventListener('click', () => {
   if (!sendRatchet) return;
   safetyConfirmed = true;
   updateSecurityState();
-  $('#chat-message').focus();
+  enterChatting();
+});
+$('#open-safety').addEventListener('click', () => {
+  const panel = $('.chat-area > .security-panel');
+  const open = !panel.classList.contains('is-hidden');
+  panel.classList.toggle('is-hidden', open);
+  $('#open-safety').setAttribute('aria-expanded', String(!open));
 });
 document.querySelectorAll('[data-open-app]').forEach((button) => button.addEventListener('click', () => setView('app')));
 document.querySelectorAll('[data-home-link]').forEach((link) => link.addEventListener('click', (event) => {
@@ -532,7 +838,7 @@ $('#message-list').addEventListener('click', (event) => {
 });
 $('#clear-session').addEventListener('click', () => $('#clear-dialog').showModal());
 $('#clear-confirm').addEventListener('change', (event) => { $('#clear-final').disabled = !event.target.checked; });
-$('#clear-dialog').addEventListener('close', () => {
+$('#clear-dialog').addEventListener('close', async () => {
   if ($('#clear-dialog').returnValue === 'default' && $('#clear-confirm').checked) {
     disposeConversationSecrets();
     otpKey?.fill(0);
@@ -540,6 +846,7 @@ $('#clear-dialog').addEventListener('close', () => {
     transport?.close();
     transport = null;
     fallback = null;
+    await deleteSessionState();
     localStorage.clear();
     location.reload();
   }
@@ -551,6 +858,8 @@ scrubLegacyConversationStorage();
 populateContacts();
 setConnectionMode('manual');
 updateSecurityState();
+setHandshakeStage('choice');
+await initializeSessionPersistence();
 if (location.hash === '#app') setView('app');
 
 const observer = 'IntersectionObserver' in window && !prefersReducedMotion()

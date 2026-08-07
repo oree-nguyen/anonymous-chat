@@ -109,6 +109,14 @@ export class RatchetState {
     return { position: this.position };
   }
 
+  exportPersistenceState() {
+    return {
+      direction: this.direction,
+      position: this.position,
+      chainKey: new Uint8Array(this.chainKey),
+    };
+  }
+
   dispose() {
     zeroize(this.chainKey);
     this.chainKey = new Uint8Array(0);
@@ -117,5 +125,10 @@ export class RatchetState {
 
   static restore() {
     throw new Error('Ratchet keys are not persisted. Start a fresh handshake after reloading.');
+  }
+
+  static restorePersistenceState(snapshot) {
+    if (!snapshot || !snapshot.chainKey) throw new Error('A persisted ratchet state is required.');
+    return new RatchetState(snapshot.chainKey, snapshot.direction, snapshot.position);
   }
 }

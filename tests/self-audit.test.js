@@ -58,6 +58,33 @@ test('self-audit TODO: restoring a stale snapshot cannot recreate a consumed mes
   assert.throws(() => RatchetState.restore(staleSnapshot), /not persisted|fresh handshake/);
 });
 
+test('self-audit: encrypted session snapshots restore the current ratchet position', async () => {
+  const state = new RatchetState(randomBytes(32), RATCHET_DIRECTIONS.A_TO_B);
+  const first = await state.next();
+  first.messageKey.fill(0);
+  const snapshot = state.exportPersistenceState();
+  const restored = RatchetState.restorePersistenceState(snapshot);
+  assert.equal(restored.position, state.position);
+  const [originalNext, restoredNext] = await Promise.all([state.next(), restored.next()]);
+  assert.equal(equalBytes(originalNext.messageKey, restoredNext.messageKey), true);
+  originalNext.messageKey.fill(0);
+  restoredNext.messageKey.fill(0);
+  snapshot.chainKey.fill(0);
+  state.dispose();
+  restored.dispose();
+});
+
+test('self-audit: session vault stores no transcript or message key fields', async () => {
+  const source = await readFile(new URL('../session-vault.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /conversationMessages|messageKey/);
+  assert.match(source, /const serializable = \{/);
+  assert.doesNotMatch(source, /serializable\s*=\s*\{[\s\S]*messages/);
+  assert.match(source, /PBKDF2/);
+  assert.match(source, /iterations: PIN_ITERATIONS/);
+  assert.match(source, /const extractable = false/);
+  assert.match(source, /AES-GCM/);
+});
+
 test('self-audit TODO: persisted conversations contain no plaintext transcript', async () => {
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /messages:\s*conversationMessages/);

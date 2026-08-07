@@ -154,6 +154,12 @@ This environment did not provide Android hardware or a reliable DevTools CPU-thr
 - English is the complete fallback catalog and Vietnamese covers the complete visible landing/workspace interface. The other nine non-English catalogs retain their existing translated core encryption flows and use English fallback for new landing copy. Completing those translations needs native-speaker review; the UI does not silently omit any label.
 - The repository has no configured public GitHub URL, so the footer links to local project documentation and the security self-audit instead of inventing an external source link.
 
+### Optional reload persistence
+
+Reload persistence is off by default and can be enabled from Advanced settings. The PIN option derives an AES-256-GCM key with PBKDF2-SHA-256 using 100,000 iterations; only the encrypted current ratchet snapshot is stored, and five failed unlock attempts delete it. The browser-held option stores a non-extractable AES-GCM `CryptoKey` in IndexedDB and keeps only the encrypted snapshot beside it.
+
+Neither option stores plaintext, message history, message keys, or a raw chain key. A live `RTCPeerConnection` cannot survive a reload, so a restored session resumes through the manual encrypted-emoji fallback until the peers complete a new reconnect handshake. A compromised browser, injected script, screenshots, or an unlocked device remain outside this feature's protection.
+
 ## Repository map
 
 ```text
