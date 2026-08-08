@@ -10,7 +10,7 @@ WebRTC, ngụy trang bản mã thành chuỗi emoji.
 
 **Mã nguồn mở hoàn toàn — bạn không cần tin chúng tôi, chỉ cần đọc code.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#-giấy-phép)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](#-giấy-phép)
 [![Zero Backend](https://img.shields.io/badge/backend-none-brightgreen)](#-kiến-trúc)
 [![Zero Dependency](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](#-kiến-trúc)
 [![Encryption](https://img.shields.io/badge/encryption-AES--256--GCM-blue)](#-đặc-tả-mã-hóa)
@@ -231,8 +231,16 @@ tránh bị lợi dụng trước khi có bản vá.
 
 ## 📜 Giấy phép
 
-Phát hành theo giấy phép **MIT** — dùng, sửa, phân phối lại tự do, miễn
-giữ nguyên thông báo bản quyền gốc. Xem chi tiết tại [`LICENSE`](./LICENSE).
+Phát hành theo giấy phép **GNU Affero General Public License v3.0
+(AGPL-3.0)** — bạn được tự do dùng, sửa, phân phối lại, kể cả cho mục đích
+thương mại. Điều kiện: **mọi bản sửa đổi, kể cả khi chỉ chạy như 1 dịch vụ
+qua mạng (không phân phối file), cũng phải công khai mã nguồn** tương ứng
+cho người dùng dịch vụ đó.
+
+Đây là lựa chọn có chủ đích, đúng tinh thần minh bạch xuyên suốt dự án:
+không ai được phép biến bản sửa đổi thành "hộp đen" đóng kín, dù chỉ host
+lại dưới dạng web service mà không phát hành file. Xem toàn văn tại
+[`LICENSE`](./LICENSE).
 
 ---
 
