@@ -11,6 +11,7 @@ import { EMOJI_TABLE } from '../crypto/emoji-table.js';
 import { generateOtpKey, otpEncrypt, otpDecrypt, OtpUsageTracker, OTP_DIRECTIONS } from '../crypto/otp.js';
 import { encodeQr } from '../qr/qr-encode.js';
 import { decodeQr } from '../qr/qr-decode.js';
+import { encryptBackup, decryptBackup } from '../backup-vault.js';
 
 test('self-audit: default AES-GCM encryption generates a fresh IV for every call', async () => {
   const key = randomBytes(32);
@@ -83,6 +84,20 @@ test('self-audit: session vault stores no transcript or message key fields', asy
   assert.match(source, /iterations: PIN_ITERATIONS/);
   assert.match(source, /const extractable = false/);
   assert.match(source, /AES-GCM/);
+});
+
+test('self-audit: encrypted backup round-trips ratchet state and rejects a wrong PIN', async () => {
+  const snapshot = {
+    nickname: 'peer',
+    send: { direction: RATCHET_DIRECTIONS.A_TO_B, position: 3, chainKey: randomBytes(32) },
+    receive: { direction: RATCHET_DIRECTIONS.B_TO_A, position: 4, chainKey: randomBytes(32) },
+  };
+  const encrypted = await encryptBackup('246810', snapshot);
+  assert.doesNotMatch(encrypted, /peer|message|chainKey/);
+  const restored = await decryptBackup('246810', encrypted);
+  assert.equal(restored.nickname, snapshot.nickname);
+  assert.deepEqual(restored.send.chainKey, snapshot.send.chainKey);
+  await assert.rejects(() => decryptBackup('135790', encrypted));
 });
 
 test('self-audit TODO: persisted conversations contain no plaintext transcript', async () => {

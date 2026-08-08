@@ -6,11 +6,11 @@ import { createRatchetState, RATCHET_DIRECTIONS } from '../crypto/ratchet.js';
 import { encryptRatchetMessage, decryptRatchetMessage } from '../crypto/message.js';
 import { FallbackController } from '../webrtc/fallback.js';
 
-test('17: a long SDP handshake round-trips exactly', () => {
+test('17: a long SDP handshake compresses and round-trips exactly', async () => {
   const sdp = `v=0\r\n${Array.from({ length: 120 }, (_, index) => `a=candidate:${index} 1 udp 1 192.0.2.${index % 250} ${5000 + index} typ host\r\n`).join('')}`;
   const publicKey = Uint8Array.from({ length: 65 }, (_, index) => index);
-  const code = encodeHandshake({ kind: 'offer', sdp, publicKey });
-  const decoded = decodeHandshake(code, 'offer');
+  const code = await encodeHandshake({ kind: 'offer', sdp, publicKey });
+  const decoded = await decodeHandshake(code, 'offer');
   assert.equal(decoded.sdp, sdp);
   assert.deepEqual(decoded.publicKey, publicKey);
 });

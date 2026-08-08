@@ -1,6 +1,7 @@
 import { asBytes, utf8 } from './bytes.js';
 
 export const PBKDF2_ITERATIONS = 250_000;
+export const MIN_PASSPHRASE_BITS = 60;
 export const ROOT_INFO = 'anonymous-chat-root';
 
 export async function hkdf(inputKeyMaterial, info, options = {}) {
@@ -59,7 +60,7 @@ export function estimatePassphraseStrength(passphrase) {
     : 0;
   const entropy = Math.round(Math.max(characterBits, dicewareBits));
   const obviousPattern = COMMON_WEAK.has(lower) || isDate || /(.)\1{4,}/u.test(normalized) || unique < 4;
-  const accepted = !obviousPattern && (entropy >= 50 || (words.length >= 5 && new Set(words.map((word) => word.toLowerCase())).size === words.length));
+  const accepted = !obviousPattern && (entropy >= MIN_PASSPHRASE_BITS || (words.length >= 5 && new Set(words.map((word) => word.toLowerCase())).size === words.length));
   return {
     accepted,
     entropy,

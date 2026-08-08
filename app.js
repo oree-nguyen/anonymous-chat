@@ -4,17 +4,23 @@ import { encryptPassphraseMessage, decryptPassphraseMessage, encryptRatchetMessa
 import { packPayload, unpackPayload } from './crypto/emoji-codec.js';
 import { createRatchetState, RATCHET_DIRECTIONS } from './crypto/ratchet.js';
 import { RatchetState } from './crypto/ratchet.js';
-import { fromUtf8, concatBytes, zeroize } from './crypto/bytes.js';
+import { fromUtf8, concatBytes, zeroize, toBase64, fromBase64 } from './crypto/bytes.js';
 import { generateOtpKey, otpEncrypt, otpDecrypt, OtpUsageTracker, OTP_DIRECTIONS, otpDirectionCode, otpDirectionFromCode } from './crypto/otp.js';
 import { PeerTransport } from './webrtc/peer.js';
 import { decodeHandshake } from './webrtc/handshake.js';
 import { FallbackController } from './webrtc/fallback.js';
 import { roleForPublicKeys } from './crypto/ecdh.js';
 import { configureSessionPersistence, deleteSessionState, getSessionConfig, hasStoredSessionState, loadSessionState, saveSessionState, updatePinFailure } from './session-vault.js';
+import { encryptBackup, decryptBackup } from './backup-vault.js';
+import { encodeQr, drawQrToCanvas } from './qr/qr-encode.js';
+import { decodeQrImageData } from './qr/qr-decode.js';
 
 const $ = (selector) => document.querySelector(selector);
 const STORAGE_PREFIX = 'anonymous-chat:';
 const THEME_KEY = `${STORAGE_PREFIX}theme`;
+const PROFILE_KEY = `${STORAGE_PREFIX}profile-name`;
+const TURN_KEY = `${STORAGE_PREFIX}turn-server`;
+const AUTO_LOCK_KEY = `${STORAGE_PREFIX}auto-lock`;
 const otpTracker = new OtpUsageTracker(localStorage);
 let transport = null;
 let fallback = null;
@@ -30,6 +36,188 @@ let handshakeStage = 'choice';
 let sessionConfig = null;
 let sessionPin = '';
 let restoredRemotePublicKey = null;
+let localSafetyConfirmed = false;
+let remoteSafetyConfirmed = false;
+let verificationStartedAt = 0;
+let verificationTimer = null;
+let pendingSenderName = '';
+let answerPeerConfirmed = false;
+let qrStream = null;
+let qrFrameRequest = null;
+let autoLockTimer = null;
+let autoLocked = false;
+const AUTO_LOCK_ITERATIONS = 100_000;
+
+function profileName() {
+  return localStorage.getItem(PROFILE_KEY)?.trim().slice(0, 60) || '';
+}
+
+function iceServers() {
+  const value = localStorage.getItem(TURN_KEY)?.trim();
+  return value && /^turns?:/iu.test(value) ? [{ urls: value }] : undefined;
+}
+
+function autoLockConfig() {
+  try {
+    const config = JSON.parse(localStorage.getItem(AUTO_LOCK_KEY) || 'null');
+    return config?.enabled && config.salt && config.verifier ? config : null;
+  } catch { return null; }
+}
+
+async function autoLockVerifier(pin, salt) {
+  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin.normalize('NFKC')), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: AUTO_LOCK_ITERATIONS }, material, 256));
+}
+
+function resetAutoLockTimer() {
+  if (autoLocked) return;
+  clearTimeout(autoLockTimer);
+  const config = autoLockConfig();
+  if (config) autoLockTimer = setTimeout(lockWorkspace, Math.max(1, config.minutes) * 60_000);
+}
+
+function lockWorkspace() {
+  if (!autoLockConfig() || autoLocked) return;
+  autoLocked = true;
+  document.body.classList.add('auto-locked');
+  $('#auto-lock-screen').classList.remove('is-hidden');
+  $('#unlock-pin').value = '';
+  $('#unlock-pin').focus();
+}
+
+async function unlockWorkspace() {
+  const config = autoLockConfig();
+  if (!config) return;
+  const candidate = await autoLockVerifier($('#unlock-pin').value, fromBase64(config.salt));
+  const expected = fromBase64(config.verifier);
+  if (candidate.length !== expected.length || candidate.some((byte, index) => byte !== expected[index])) {
+    $('#unlock-error').classList.remove('is-hidden');
+    return;
+  }
+  $('#unlock-error').classList.add('is-hidden');
+  autoLocked = false;
+  document.body.classList.remove('auto-locked');
+  $('#auto-lock-screen').classList.add('is-hidden');
+  resetAutoLockTimer();
+}
+
+function updateProfileControls() {
+  const value = $('#profile-name')?.value.trim() || '';
+  const ready = value.length > 0;
+  $('#choose-start').disabled = !ready;
+  $('#choose-join').disabled = !ready;
+  if (ready) localStorage.setItem(PROFILE_KEY, value.slice(0, 60));
+}
+
+function showPeerPreview(element, name, key) {
+  if (!element) return;
+  if (!name) {
+    element.classList.add('is-hidden');
+    return;
+  }
+  element.textContent = t(key).replace('{name}', name);
+  element.classList.remove('is-hidden');
+}
+
+function handshakeLink(code) {
+  return `${location.origin}${location.pathname}#code=${encodeURIComponent(code)}`;
+}
+
+async function shareHandshakeCode(code) {
+  const url = handshakeLink(code);
+  if (navigator.share) {
+    await navigator.share({ title: 'anonymous-chat handshake', text: t('shareLinkWarning'), url });
+    return;
+  }
+  await navigator.clipboard.writeText(url);
+  reportError(new Error(t('copied')));
+}
+
+function renderHandshakeQr(code, canvas) {
+  const qr = encodeQr(new TextEncoder().encode(code));
+  drawQrToCanvas(qr, canvas, 4, 4);
+  canvas.classList.remove('is-hidden');
+}
+
+function stopQrScanner() {
+  if (qrFrameRequest) cancelAnimationFrame(qrFrameRequest);
+  qrFrameRequest = null;
+  qrStream?.getTracks().forEach((track) => track.stop());
+  qrStream = null;
+  const video = $('#qr-video');
+  if (video) video.srcObject = null;
+  $('#qr-scanner')?.classList.add('is-hidden');
+}
+
+async function scanQr() {
+  stopQrScanner();
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error(t('cameraUnavailable'));
+  qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+  const video = $('#qr-video');
+  const frame = $('#qr-frame');
+  video.srcObject = qrStream;
+  $('#qr-scanner').classList.remove('is-hidden');
+  await video.play();
+  const scan = async () => {
+    if (!qrStream) return;
+    if (video.videoWidth && video.videoHeight) {
+      frame.width = video.videoWidth;
+      frame.height = video.videoHeight;
+      const context = frame.getContext('2d', { willReadFrequently: true });
+      context.drawImage(video, 0, 0, frame.width, frame.height);
+      try {
+        const bytes = decodeQrImageData(context.getImageData(0, 0, frame.width, frame.height).data, frame.width, frame.height);
+        const code = new TextDecoder().decode(bytes);
+        $('#offer-input').value = code;
+        const decoded = await awaitHandshakeDecode(code);
+        pendingSenderName = decoded.senderName;
+        showPeerPreview($('#offer-sender-preview'), pendingSenderName, 'senderWantsToChat');
+        stopQrScanner();
+        setHandshakeStage('b-paste');
+        return;
+      } catch { /* keep scanning until a valid anonymous-chat code is found */ }
+    }
+    qrFrameRequest = requestAnimationFrame(() => { void scan(); });
+  };
+  scan();
+}
+
+async function awaitHandshakeDecode(code) {
+  return decodeHandshake(code);
+}
+
+function backupSnapshot() {
+  if (!sendRatchet || !receiveRatchet) throw new Error(t('backupRequiresSession'));
+  const contacts = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key?.startsWith(`${STORAGE_PREFIX}conversation:`)) continue;
+    try { contacts.push(JSON.parse(localStorage.getItem(key))); } catch { /* ignore damaged metadata */ }
+  }
+  return {
+    nickname: $('#contact-name').value.trim() || 'contact',
+    remotePublicKey: transport?.remotePublicKey ? Array.from(transport.remotePublicKey) : restoredRemotePublicKey,
+    safetyNumber: $('#safety-number').textContent,
+    role: handshakeRole,
+    send: sendRatchet.exportPersistenceState(),
+    receive: receiveRatchet.exportPersistenceState(),
+    contacts,
+  };
+}
+
+async function importHandshakeLink() {
+  const match = location.hash.match(/^#code=(.+)$/u);
+  if (!match) return false;
+  const code = decodeURIComponent(match[1]);
+  history.replaceState(null, '', `${location.pathname}${location.search}`);
+  $('#offer-input').value = code;
+  const decoded = await decodeHandshake(code);
+  pendingSenderName = decoded.senderName;
+  showPeerPreview($('#offer-sender-preview'), pendingSenderName, 'senderWantsToChat');
+  setHandshakeStage('b-paste');
+  setView('app');
+  return true;
+}
 
 const handshakeProgress = {
   choice: null,
@@ -197,6 +385,7 @@ function setHandshakeStage(stage) {
 
     const verifying = stage === 'verifying';
     const chatting = stage === 'chatting';
+    document.body.dataset.mobileChat = String(verifying || chatting);
     chatArea?.classList.toggle('is-hidden', !verifying && !chatting);
     chatArea?.classList.toggle('is-verifying', verifying);
     chatMain?.classList.toggle('is-chat-hidden', verifying);
@@ -208,6 +397,7 @@ function setHandshakeStage(stage) {
 }
 
 function enterVerifyingStage() {
+  beginSafetyVerification();
   setHandshakeStage('verifying');
   updateSecurityState();
 }
@@ -233,7 +423,12 @@ async function runDecryption(action, button = null) {
     if (button) button.disabled = true;
     await action();
   } catch (error) {
-    reportError(error, t('openFailed'));
+    if (error instanceof Error && /checksum failed/iu.test(error.message)) {
+      reportError(error, t('checksumFailed'));
+    } else if (error instanceof Error && /skip more than|already destroyed/iu.test(error.message)) {
+      $('#ratchet-recovery')?.classList.remove('is-hidden');
+      reportError(error, t('ratchetDrift'));
+    } else reportError(error, t('openFailed'));
   } finally {
     if (button) button.disabled = false;
   }
@@ -291,9 +486,51 @@ function updateSecurityState() {
   if (compactSymbol) compactSymbol.textContent = securityMode === 'safe' ? '✓' : securityMode === 'manual' ? '◇' : '!';
   message.disabled = !ready;
   send.disabled = !ready;
-  confirm.disabled = !sendRatchet || safetyConfirmed;
+  const entered = ($('#peer-safety-number')?.value.trim().length ?? 0) === 8;
+  confirm.disabled = !sendRatchet || safetyConfirmed || localSafetyConfirmed || !entered;
   confirm.textContent = safetyConfirmed ? t('verifiedState') : t('confirmMatch');
   message.placeholder = safetyConfirmed ? t('messagePlaceholder') : t('verifyBeforeWriting');
+}
+
+function beginSafetyVerification() {
+  clearInterval(verificationTimer);
+  localSafetyConfirmed = false;
+  remoteSafetyConfirmed = false;
+  safetyConfirmed = false;
+  verificationStartedAt = Date.now();
+  const input = $('#peer-safety-number');
+  const error = $('#verification-error');
+  const danger = $('#verification-danger');
+  $('#verification-delay')?.classList.remove('is-warning');
+  if (input) {
+    input.value = '';
+    input.disabled = true;
+  }
+  error?.classList.add('is-hidden');
+  danger?.classList.add('is-hidden');
+  const updateDelay = () => {
+    const remaining = Math.max(0, 8 - Math.floor((Date.now() - verificationStartedAt) / 1000));
+    const delay = $('#verification-delay');
+    if (delay) delay.textContent = remaining > 0 ? `${t('verificationDelay')} (${remaining}s)` : t('verificationReady');
+    if (input && remaining === 0) input.disabled = false;
+    if (remaining === 0) clearInterval(verificationTimer);
+    updateSecurityState();
+  };
+  verificationTimer = setInterval(updateDelay, 250);
+  updateDelay();
+}
+
+function completeSafetyIfMutual() {
+  if (!localSafetyConfirmed || !remoteSafetyConfirmed) return;
+  safetyConfirmed = true;
+  clearInterval(verificationTimer);
+  updateSecurityState();
+  enterChatting();
+}
+
+function handleVerificationAck() {
+  remoteSafetyConfirmed = true;
+  completeSafetyIfMutual();
 }
 
 function renderConversation(messages = conversationMessages) {
@@ -395,6 +632,8 @@ function restoreRatchets(state, pin = '') {
   restoredRemotePublicKey = Array.isArray(state.remotePublicKey) ? new Uint8Array(state.remotePublicKey) : null;
   handshakeRole = state.role || 'start';
   safetyConfirmed = true;
+  localSafetyConfirmed = true;
+  remoteSafetyConfirmed = true;
   sessionPin = pin;
   $('#contact-name').value = state.nickname || 'contact';
   $('#safety-number').textContent = state.safetyNumber || '--------';
@@ -494,7 +733,20 @@ function bindTransport(instance) {
     if (handshakeRole === 'join' && handshakeStage === 'b-response') enterVerifyingStage();
     if (handshakeRole === 'start' && handshakeStage === 'a-wait' && safetyConfirmed) enterChatting();
   });
+  instance.addEventListener('heartbeattimeout', () => {
+    if (!sendRatchet) return;
+    setConnectionMode('connecting');
+    $('#fallback-transfer')?.classList.remove('is-hidden');
+    reportError(new Error(t('heartbeatTimeout')));
+  });
+  instance.addEventListener('heartbeat', () => {
+    if (connectionMode === 'connecting' && instance.channel?.readyState === 'open') setConnectionMode('p2p');
+  });
   instance.addEventListener('message', (event) => {
+    if (typeof event.detail === 'string') {
+      if (event.detail === 'verification_ack') handleVerificationAck();
+      return;
+    }
     runDecryption(async () => {
       const plaintext = await decryptRatchetMessage(receiveRatchet, new Uint8Array(event.detail));
       appendMessage(plaintext, false);
@@ -528,38 +780,47 @@ async function initializeConversation({ deferVerification = false } = {}) {
   $('#reconnect').disabled = false;
   $('#safety-number').textContent = await transport.getSafetyNumber();
   $('#safety-number').title = t('verifySafety');
+  $('#ratchet-recovery')?.classList.add('is-hidden');
   safetyConfirmed = false;
+  localSafetyConfirmed = false;
+  remoteSafetyConfirmed = false;
   updateSecurityState();
   renderConversation();
   persistConversation();
   if (!deferVerification) enterVerifyingStage();
 }
 
-function disposeConversationSecrets() {
+function disposeConversationSecrets({ clearHistory = true } = {}) {
   sendRatchet?.dispose();
   receiveRatchet?.dispose();
   sendRatchet = null;
   receiveRatchet = null;
-  for (const message of conversationMessages) message.text = '';
-  conversationMessages = [];
+  if (clearHistory) {
+    for (const message of conversationMessages) message.text = '';
+    conversationMessages = [];
+  }
   safetyConfirmed = false;
+  localSafetyConfirmed = false;
+  remoteSafetyConfirmed = false;
   updateSecurityState();
 }
 
 function freshTransport() {
   transport?.close();
-  transport = new PeerTransport();
+  transport = new PeerTransport({ iceServers: iceServers() });
   bindTransport(transport);
   return transport;
 }
 
 $('#choose-start').addEventListener('click', () => {
+  updateProfileControls();
   handshakeRole = 'start';
   setHandshakeStage('a-enter');
   $('#contact-name').focus();
 });
 
 $('#choose-join').addEventListener('click', () => {
+  updateProfileControls();
   handshakeRole = 'join';
   setHandshakeStage('b-paste');
   $('#offer-input').focus();
@@ -571,7 +832,7 @@ $('#create-offer').addEventListener('click', (event) => run(async () => {
   disposeConversationSecrets();
   renderConversation([]);
   const peer = freshTransport();
-  const code = await peer.createOffer();
+  const code = await peer.createOffer({ senderName: profileName() });
   $('#offer-output').value = code;
   $('#offer-output-block').classList.remove('is-hidden');
   $('#answer-input-block').classList.remove('is-hidden');
@@ -583,7 +844,9 @@ $('#create-answer').addEventListener('click', (event) => run(async () => {
   handshakeRole = 'join';
   const code = $('#offer-input').value.trim();
   if (!code) throw new Error(t('offerRequired'));
-  const decoded = decodeHandshake(code);
+  const decoded = await decodeHandshake(code);
+  pendingSenderName = decoded.senderName;
+  showPeerPreview($('#offer-sender-preview'), pendingSenderName, 'senderWantsToChat');
   const reconnect = decoded.kind === 'reconnect-offer';
   if (reconnect && !transport) throw new Error(t('reconnectSessionRequired'));
   if (!reconnect) {
@@ -592,7 +855,7 @@ $('#create-answer').addEventListener('click', (event) => run(async () => {
   }
   setConnectionMode('connecting');
   const peer = reconnect && transport ? transport : freshTransport();
-  const answer = await peer.acceptOffer(code, { reconnect });
+  const answer = await peer.acceptOffer(code, { reconnect, senderName: profileName() });
   $('#answer-output').value = answer;
   $('#answer-output-block').classList.remove('is-hidden');
   $('#connection-detail').textContent = t('answerReady');
@@ -610,9 +873,15 @@ $('#accept-answer').addEventListener('click', (event) => run(async () => {
   if (!transport) throw new Error(t('createOfferFirst'));
   const code = $('#answer-input').value.trim();
   if (!code) throw new Error(t('answerRequired'));
-  const decoded = decodeHandshake(code);
+  const decoded = await decodeHandshake(code);
   const reconnect = decoded.kind === 'reconnect-answer';
+  if (!reconnect && decoded.senderName && !answerPeerConfirmed) {
+    showPeerPreview($('#answer-peer-preview'), decoded.senderName, 'youWillConnectTo');
+    answerPeerConfirmed = true;
+    throw new Error(t('confirmPeerThenContinue'));
+  }
   await transport.acceptAnswer(code, { reconnect });
+  answerPeerConfirmed = false;
   if (!sendRatchet) await initializeConversation();
   else if (transport.rootKey) {
     transport.rootKey.fill(0);
@@ -626,7 +895,7 @@ $('#reconnect').addEventListener('click', (event) => run(async () => {
   handshakeRole = 'start';
   if (!transport || !sendRatchet) throw new Error(t('conversationMissing'));
   setConnectionMode('connecting');
-  const code = await transport.createOffer({ reconnect: true });
+  const code = await transport.createOffer({ reconnect: true, senderName: profileName() });
   $('#offer-output').value = code;
   $('#offer-output-block').classList.remove('is-hidden');
   $('#answer-input-block').classList.remove('is-hidden');
@@ -671,13 +940,17 @@ function updateStrength() {
   note.textContent = `${t(result.accepted ? 'strengthStrong' : 'strengthWeak')} (${result.entropy} ${t('estimatedBits')})`;
   note.classList.toggle('is-error', !result.accepted);
   note.classList.toggle('is-success', result.accepted);
+  $('#weak-override').classList.toggle('is-hidden', result.accepted);
+  const overrideAccepted = $('#weak-override-confirmation').value.trim() === t('weakOverridePhrase');
+  $('#manual-encrypt').disabled = !result.accepted && !overrideAccepted;
   return result;
 }
 
 $('#passphrase').addEventListener('input', updateStrength);
+$('#weak-override-confirmation').addEventListener('input', updateStrength);
 $('#manual-encrypt').addEventListener('click', (event) => run(async () => {
   const strength = updateStrength();
-  if (!strength.accepted) throw new Error(t('passphraseWeak'));
+  if (!strength.accepted && $('#weak-override-confirmation').value.trim() !== t('weakOverridePhrase')) throw new Error(t('passphraseWeak'));
   const plaintext = $('#manual-plaintext').value;
   if (!plaintext) throw new Error(t('messageRequired'));
   $('#manual-output').value = packPayload(await encryptPassphraseMessage($('#passphrase').value, plaintext));
@@ -871,12 +1144,129 @@ $('#locale-select').addEventListener('change', (event) => run(async () => {
   renderConversation();
   populateContacts();
 }));
-$('#confirm-safety').addEventListener('click', () => {
-  if (!sendRatchet) return;
-  safetyConfirmed = true;
-  updateSecurityState();
-  enterChatting();
+$('#profile-name').addEventListener('input', updateProfileControls);
+$('#offer-input').addEventListener('input', () => {
+  const code = $('#offer-input').value.trim();
+  if (!code) {
+    showPeerPreview($('#offer-sender-preview'), '', 'senderWantsToChat');
+    return;
+  }
+  void decodeHandshake(code).then((decoded) => {
+    showPeerPreview($('#offer-sender-preview'), decoded.senderName, 'senderWantsToChat');
+  }).catch(() => showPeerPreview($('#offer-sender-preview'), '', 'senderWantsToChat'));
 });
+$('#answer-input').addEventListener('input', () => {
+  answerPeerConfirmed = false;
+  showPeerPreview($('#answer-peer-preview'), '', 'youWillConnectTo');
+});
+$('#turn-server').value = localStorage.getItem(TURN_KEY) || '';
+$('#save-turn-setting').addEventListener('click', (event) => run(async () => {
+  const value = $('#turn-server').value.trim();
+  if (value && !/^turns?:/iu.test(value)) throw new Error(t('turnInvalid'));
+  if (value) localStorage.setItem(TURN_KEY, value);
+  else localStorage.removeItem(TURN_KEY);
+  $('#turn-settings-title').textContent = t('turnSaved');
+}, event.currentTarget));
+const existingAutoLock = autoLockConfig();
+$('#auto-lock-enabled').checked = Boolean(existingAutoLock);
+$('#auto-lock-fields').classList.toggle('is-hidden', !existingAutoLock);
+if (existingAutoLock) $('#auto-lock-minutes').value = existingAutoLock.minutes;
+$('#auto-lock-enabled').addEventListener('change', (event) => $('#auto-lock-fields').classList.toggle('is-hidden', !event.target.checked));
+$('#save-auto-lock').addEventListener('click', (event) => run(async () => {
+  if (!$('#auto-lock-enabled').checked) {
+    localStorage.removeItem(AUTO_LOCK_KEY);
+    clearTimeout(autoLockTimer);
+    $('#auto-lock-fields').classList.add('is-hidden');
+    return;
+  }
+  const pin = $('#auto-lock-pin').value.trim();
+  if (!/^\d{6,}$/u.test(pin) || pin !== $('#auto-lock-pin-confirm').value.trim()) throw new Error(t('lockPinInvalid'));
+  const minutes = Math.min(120, Math.max(1, Number.parseInt($('#auto-lock-minutes').value, 10) || 5));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const verifier = await autoLockVerifier(pin, salt);
+  localStorage.setItem(AUTO_LOCK_KEY, JSON.stringify({ enabled: true, minutes, salt: toBase64(salt), verifier: toBase64(verifier) }));
+  $('#auto-lock-pin').value = '';
+  $('#auto-lock-pin-confirm').value = '';
+  resetAutoLockTimer();
+}, event.currentTarget));
+$('#unlock-workspace').addEventListener('click', (event) => run(() => unlockWorkspace(), event.currentTarget));
+$('#unlock-pin').addEventListener('keydown', (event) => { if (event.key === 'Enter') $('#unlock-workspace').click(); });
+$('#chat-back').addEventListener('click', () => {
+  stopQrScanner();
+  setHandshakeStage('choice');
+});
+['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => addEventListener(eventName, resetAutoLockTimer, { passive: true }));
+$('#export-backup').addEventListener('click', (event) => run(async () => {
+  const pin = $('#backup-pin').value.trim();
+  const text = await encryptBackup(pin, backupSnapshot());
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  link.download = `anonymous-chat-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}, event.currentTarget));
+$('#import-backup').addEventListener('click', () => $('#backup-file').click());
+$('#backup-file').addEventListener('change', (event) => run(async () => {
+  const file = event.target.files[0];
+  if (!file) return;
+  const pin = $('#backup-pin').value.trim();
+  const state = await decryptBackup(pin, await file.text());
+  await deleteSessionState();
+  sessionConfig = null;
+  sessionPin = '';
+  $('#remember-session').checked = false;
+  refreshSessionOptions();
+  restoreRatchets(state, '');
+  for (const contact of state.contacts || []) {
+    if (contact?.nickname) localStorage.setItem(`${STORAGE_PREFIX}conversation:${contact.nickname}`, JSON.stringify(contact));
+  }
+  populateContacts();
+  event.target.value = '';
+}, event.currentTarget));
+$('#peer-safety-number').addEventListener('input', () => {
+  $('#peer-safety-number').value = $('#peer-safety-number').value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 8);
+  updateSecurityState();
+});
+$('#confirm-safety').addEventListener('click', () => {
+  if (!sendRatchet || Date.now() - verificationStartedAt < 8000) return;
+  const entered = $('#peer-safety-number').value.trim().toUpperCase();
+  const expected = $('#safety-number').textContent.trim().toUpperCase();
+  if (entered !== expected) {
+    $('#verification-error').classList.remove('is-hidden');
+    $('#verification-danger').classList.add('is-hidden');
+    return;
+  }
+  $('#verification-error').classList.add('is-hidden');
+  if (Date.now() - verificationStartedAt < 15_000) {
+    $('#verification-delay').textContent = t('verificationTooFast');
+    $('#verification-delay').classList.add('is-warning');
+  }
+  localSafetyConfirmed = true;
+  if (transport?.channel?.readyState === 'open') transport.channel.send('verification_ack');
+  completeSafetyIfMutual();
+  updateSecurityState();
+});
+$('#retry-verification').addEventListener('click', () => beginSafetyVerification());
+$('#restart-handshake').addEventListener('click', () => {
+  disposeConversationSecrets();
+  transport?.close();
+  transport = null;
+  setHandshakeStage('choice');
+});
+$('#reset-ratchet').addEventListener('click', () => {
+  disposeConversationSecrets({ clearHistory: false });
+  transport?.close();
+  transport = null;
+  $('#ratchet-recovery').classList.add('is-hidden');
+  setHandshakeStage('choice');
+});
+$('#share-offer').addEventListener('click', (event) => run(() => shareHandshakeCode($('#offer-output').value.trim()), event.currentTarget));
+$('#share-answer').addEventListener('click', (event) => run(() => shareHandshakeCode($('#answer-output').value.trim()), event.currentTarget));
+$('#show-offer-qr').addEventListener('click', (event) => run(async () => renderHandshakeQr($('#offer-output').value.trim(), $('#offer-qr')), event.currentTarget));
+$('#show-answer-qr').addEventListener('click', (event) => run(async () => renderHandshakeQr($('#answer-output').value.trim(), $('#answer-qr')), event.currentTarget));
+$('#scan-qr').addEventListener('click', (event) => run(() => scanQr(), event.currentTarget));
+$('#stop-qr').addEventListener('click', stopQrScanner);
+addEventListener('pagehide', stopQrScanner);
 $('#open-safety').addEventListener('click', () => {
   const panel = $('.chat-area > .security-panel');
   const open = !panel.classList.contains('is-hidden');
@@ -918,14 +1308,24 @@ $('#clear-dialog').addEventListener('close', async () => {
 
 await initI18n();
 setTheme(localStorage.getItem(THEME_KEY) || 'dark');
+  $('#profile-name').value = profileName();
+  updateProfileControls();
+  updateStrength();
 scrubLegacyConversationStorage();
 populateContacts();
 setConnectionMode('manual');
 updateSecurityState();
 setHandshakeStage('choice');
 await initializeSessionPersistence();
-if (location.hash === '#app') setView('app');
+try {
+  if (!(await importHandshakeLink()) && location.hash === '#app') setView('app');
+} catch (error) {
+  history.replaceState(null, '', `${location.pathname}${location.search}`);
+  reportError(error, t('openFailed'));
+  setHandshakeStage('choice');
+}
 setupVisualEffects();
+resetAutoLockTimer();
 
 const observer = 'IntersectionObserver' in window && !prefersReducedMotion()
   ? new IntersectionObserver((entries, activeObserver) => {

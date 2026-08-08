@@ -4,6 +4,8 @@ import { encodeHandshake, decodeHandshake } from './handshake.js';
 export const STUN_CONFIG = Object.freeze({
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 });
+const HEARTBEAT_PING = '__anonymous_chat_ping__';
+const HEARTBEAT_PONG = '__anonymous_chat_pong__';
 
 export function waitForIceComplete(peer, timeoutMs = 30_000) {
   if (peer.iceGatheringState === 'complete') return Promise.resolve();
@@ -37,6 +39,9 @@ export class PeerTransport extends EventTarget {
     this.peer = null;
     this.channel = null;
     this.closedByUser = false;
+    this.iceServers = options.iceServers ?? STUN_CONFIG.iceServers;
+    this.heartbeatTimer = null;
+    this.lastPongAt = 0;
   }
 
   async ensureIdentity() {
@@ -46,7 +51,7 @@ export class PeerTransport extends EventTarget {
 
   createPeer() {
     this.peer?.close();
-    const peer = this.peerFactory(STUN_CONFIG);
+    const peer = this.peerFactory({ iceServers: this.iceServers });
     this.peer = peer;
     peer.addEventListener('connectionstatechange', () => {
       this.dispatchEvent(new CustomEvent('connectionstate', { detail: peer.connectionState }));
@@ -57,15 +62,37 @@ export class PeerTransport extends EventTarget {
   bindChannel(channel) {
     this.channel = channel;
     channel.binaryType = 'arraybuffer';
-    channel.addEventListener('open', () => this.dispatchEvent(new Event('open')));
-    channel.addEventListener('message', (event) => this.dispatchEvent(new CustomEvent('message', { detail: event.data })));
+    channel.addEventListener('open', () => {
+      this.lastPongAt = Date.now();
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = setInterval(() => {
+        if (channel.readyState !== 'open') return;
+        if (Date.now() - this.lastPongAt > 30_000) this.dispatchEvent(new Event('heartbeattimeout'));
+        else channel.send(HEARTBEAT_PING);
+      }, 15_000);
+      this.dispatchEvent(new Event('open'));
+    });
+    channel.addEventListener('message', (event) => {
+      if (event.data === HEARTBEAT_PING) {
+        if (channel.readyState === 'open') channel.send(HEARTBEAT_PONG);
+        return;
+      }
+      if (event.data === HEARTBEAT_PONG) {
+        this.lastPongAt = Date.now();
+        this.dispatchEvent(new Event('heartbeat'));
+        return;
+      }
+      this.dispatchEvent(new CustomEvent('message', { detail: event.data }));
+    });
     channel.addEventListener('error', (event) => this.dispatchEvent(new CustomEvent('channelerror', { detail: event })));
     channel.addEventListener('close', () => {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
       this.dispatchEvent(new CustomEvent('close', { detail: { intentional: this.closedByUser } }));
     });
   }
 
-  async createOffer({ reconnect = false } = {}) {
+  async createOffer({ reconnect = false, senderName = '' } = {}) {
     await this.ensureIdentity();
     const peer = this.createPeer();
     this.bindChannel(peer.createDataChannel('anonymous-chat', { ordered: true }));
@@ -75,11 +102,12 @@ export class PeerTransport extends EventTarget {
       kind: reconnect ? 'reconnect-offer' : 'offer',
       sdp: peer.localDescription.sdp,
       publicKey: this.localPublicKey,
+      senderName,
     });
   }
 
-  async acceptOffer(code, { reconnect = false } = {}) {
-    const offer = decodeHandshake(code, reconnect ? 'reconnect-offer' : 'offer');
+  async acceptOffer(code, { reconnect = false, senderName = '' } = {}) {
+    const offer = await decodeHandshake(code, reconnect ? 'reconnect-offer' : 'offer');
     await this.ensureIdentity();
     this.remotePublicKey = offer.publicKey;
     const peer = this.createPeer();
@@ -92,12 +120,13 @@ export class PeerTransport extends EventTarget {
       kind: reconnect ? 'reconnect-answer' : 'answer',
       sdp: peer.localDescription.sdp,
       publicKey: this.localPublicKey,
+      senderName,
     });
   }
 
   async acceptAnswer(code, { reconnect = false } = {}) {
     if (!this.peer) throw new Error('Create an offer before accepting an answer.');
-    const answer = decodeHandshake(code, reconnect ? 'reconnect-answer' : 'answer');
+    const answer = await decodeHandshake(code, reconnect ? 'reconnect-answer' : 'answer');
     this.remotePublicKey = answer.publicKey;
     await this.peer.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
     if (!reconnect || !this.rootKey) this.rootKey = await deriveRootKey(this.keyPair.privateKey, this.remotePublicKey);
@@ -117,6 +146,8 @@ export class PeerTransport extends EventTarget {
   close() {
     this.closedByUser = true;
     this.channel?.close();
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
     this.peer?.close();
     this.rootKey?.fill(0);
     this.rootKey = null;

@@ -6,6 +6,15 @@ if (!Number.isInteger(BITS_PER_CHAR)) throw new Error('Emoji table size must be 
 
 const EMOJI_INDEX = new Map(EMOJI_TABLE.map((character, index) => [character, index]));
 
+export function crc32(value) {
+  let crc = 0xFFFFFFFF;
+  for (const byte of asBytes(value)) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
 export function bufToEmoji(value) {
   const bytes = asBytes(value);
   let buffer = 0;
@@ -53,10 +62,12 @@ export function emojiToBuf(value, byteLength) {
 
 export function packPayload(value) {
   const bytes = asBytes(value);
-  if (bytes.length > 65_535) throw new RangeError('Payload exceeds the 65,535-byte emoji envelope limit.');
+  if (bytes.length > 65_531) throw new RangeError('Payload exceeds the 65,535-byte emoji envelope limit.');
+  const checksum = new Uint8Array(4);
+  new DataView(checksum.buffer).setUint32(0, crc32(bytes), false);
   const length = new Uint8Array(2);
-  new DataView(length.buffer).setUint16(0, bytes.length, false);
-  return bufToEmoji(concatBytes(length, bytes));
+  new DataView(length.buffer).setUint16(0, bytes.length + checksum.length, false);
+  return bufToEmoji(concatBytes(length, bytes, checksum));
 }
 
 export function unpackPayload(value) {
@@ -74,5 +85,10 @@ export function unpackPayload(value) {
   const totalBytes = length + 2;
   const requiredSymbols = Math.ceil((totalBytes * 8) / BITS_PER_CHAR);
   if (symbols.length !== requiredSymbols) throw new Error('Emoji payload length does not match its header.');
-  return emojiToBuf(symbols.join(''), totalBytes).slice(2);
+  const packed = emojiToBuf(symbols.join(''), totalBytes).slice(2);
+  if (packed.length < 4) throw new Error('Emoji payload checksum is missing.');
+  const payload = packed.slice(0, -4);
+  const expected = new DataView(packed.buffer, packed.byteOffset + packed.length - 4, 4).getUint32(0, false);
+  if (crc32(payload) !== expected) throw new Error('Emoji payload checksum failed.');
+  return payload;
 }
