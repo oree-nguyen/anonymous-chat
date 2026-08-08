@@ -20,6 +20,16 @@ WebRTC, ngụy trang bản mã thành chuỗi emoji.
 
 </div>
 
+## Current Security Operations
+
+- WebRTC handshakes carry local display names, compressed filtered SDP, and public keys. Link sharing uses `#code=...` fragments and clears the fragment after import.
+- Safety-number verification is mutual: both peers read their own number through a separate channel, enter the peer's number, and exchange `verification_ack` before sending unlocks.
+- Direct channels use heartbeat ping/pong every 15 seconds and expose manual fallback or reconnect guidance after 30 seconds without a pong.
+- Emoji envelopes include a CRC32 transport checksum before authenticated decryption, distinguishing transfer damage from wrong-key or tampering failures.
+- Google STUN is the default. Users may provide their own `turn:` or `turns:` relay in Advanced settings; no TURN service is bundled or operated by this project.
+- Optional persistence, auto-lock, and encrypted backup are local convenience features. Backups exclude ECDH private keys, plaintext, transcript history, and message keys; they are not synchronization.
+- Standard QR rendering and camera scanning use locally vendored libraries listed in [`qr/vendor/LICENSES.md`](qr/vendor/LICENSES.md). Paste and fragment links remain available when camera access fails.
+
 ---
 
 ## 📖 Mục lục
