@@ -8,5 +8,6 @@
   "manualStatus": "Manueller Modus", "notConnected": "Keine direkte Verbindung aktiv.", "startConversation": "Gespräch starten", "joinConversation": "Gespräch beitreten",
   "createOffer": "Angebot erstellen", "createAnswer": "Antwort erstellen", "copy": "Kopieren", "send": "Senden", "encrypt": "Verschlüsseln", "decrypt": "Entschlüsseln",
   "passphrase": "Gemeinsame Passphrase", "plaintext": "Zu verschlüsselnde Nachricht", "incomingEmoji": "Empfangene Emoji", "clearNow": "Jetzt löschen", "cancel": "Abbrechen",
+  "conveniencePersistence": "Komfort und Speicherung", "alternativeTechnicalModes": "Alternative technische Modi", "reloadSetupWarning": "Wenn du diese Seite während der Einrichtung neu lädst, werden Schlüssel und Verlauf gelöscht. Schließe den Handshake in einer Sitzung ab.", "manualTransportStatus": "Manueller Modus: Du kopierst und sendest jedes Ergebnis selbst. Es gibt keine Lesebestätigung oder Zustellbestätigung.", "closeContacts": "Kontakte schließen", "closeSettings": "Einstellungen schließen",
   "footer": "Kein Konto. Kein Nachrichtenserver. Keine stillen Fehler."
 }

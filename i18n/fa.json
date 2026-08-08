@@ -8,5 +8,6 @@
   "manualStatus": "حالت دستی", "notConnected": "اتصال مستقیمی فعال نیست.", "startConversation": "شروع گفتگو", "joinConversation": "پیوستن به گفتگو",
   "createOffer": "ساخت پیشنهاد", "createAnswer": "ساخت پاسخ", "copy": "کپی", "send": "ارسال", "encrypt": "رمزگذاری", "decrypt": "رمزگشایی",
   "passphrase": "عبارت عبور مشترک", "plaintext": "پیام برای رمزگذاری", "incomingEmoji": "ایموجی دریافتی", "clearNow": "اکنون پاک کن", "cancel": "لغو",
+  "conveniencePersistence": "راحتی و ماندگاری", "alternativeTechnicalModes": "حالت‌های فنی جایگزین", "reloadSetupWarning": "بارگذاری دوباره این صفحه هنگام راه‌اندازی، کلیدها و تاریخچه شما را پاک می‌کند. دست‌دهی را در یک نشست کامل کنید.", "manualTransportStatus": "حالت دستی: هر نتیجه را خودتان کپی و ارسال می‌کنید. رسید خواندن یا تأیید تحویل وجود ندارد.", "closeContacts": "بستن مخاطبان", "closeSettings": "بستن تنظیمات",
   "footer": "بدون حساب. بدون سرور پیام. بدون خطای خاموش."
 }

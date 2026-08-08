@@ -8,5 +8,6 @@
   "manualStatus": "الوضع اليدوي", "notConnected": "لا يوجد اتصال مباشر.", "startConversation": "بدء محادثة", "joinConversation": "الانضمام إلى محادثة",
   "createOffer": "إنشاء عرض", "createAnswer": "إنشاء رد", "copy": "نسخ", "send": "إرسال", "encrypt": "تشفير", "decrypt": "فك التشفير",
   "passphrase": "عبارة المرور المشتركة", "plaintext": "الرسالة المراد تشفيرها", "incomingEmoji": "الرموز المستلمة", "clearNow": "امسح الآن", "cancel": "إلغاء",
+  "conveniencePersistence": "الراحة والاستمرارية", "alternativeTechnicalModes": "أوضاع تقنية بديلة", "reloadSetupWarning": "إعادة تحميل هذه الصفحة أثناء الإعداد تمسح مفاتيحك وسجلّك. أكمل المصافحة في جلسة واحدة.", "manualTransportStatus": "الوضع اليدوي: تنسخ كل نتيجة وترسلها بنفسك. لا يوجد إيصال قراءة أو تأكيد تسليم.", "closeContacts": "إغلاق جهات الاتصال", "closeSettings": "إغلاق الإعدادات",
   "footer": "لا حساب. لا خادم رسائل. لا أخطاء صامتة."
 }

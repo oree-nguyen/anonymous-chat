@@ -8,5 +8,6 @@
   "manualStatus": "수동 모드", "notConnected": "직접 연결이 없습니다.", "startConversation": "대화 시작", "joinConversation": "대화 참여",
   "createOffer": "제안 만들기", "createAnswer": "응답 만들기", "copy": "복사", "send": "보내기", "encrypt": "암호화", "decrypt": "복호화",
   "passphrase": "공유 암호 문구", "plaintext": "암호화할 메시지", "incomingEmoji": "받은 이모지", "clearNow": "지금 지우기", "cancel": "취소",
+  "conveniencePersistence": "편의성과 저장", "alternativeTechnicalModes": "대체 기술 모드", "reloadSetupWarning": "설정 중 이 페이지를 새로고침하면 키와 기록이 삭제됩니다. 한 번의 세션에서 핸드셰이크를 완료하세요.", "manualTransportStatus": "수동 모드: 각 결과를 직접 복사해 전송합니다. 읽음 확인이나 전달 확인은 없습니다.", "closeContacts": "연락처 닫기", "closeSettings": "설정 닫기",
   "footer": "계정 없음. 메시지 서버 없음. 조용한 실패 없음."
 }

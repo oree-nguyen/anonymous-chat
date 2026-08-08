@@ -8,5 +8,6 @@
   "manualStatus": "手動モード", "notConnected": "直接接続はありません。", "startConversation": "会話を開始", "joinConversation": "会話に参加",
   "createOffer": "オファーを作成", "createAnswer": "回答を作成", "copy": "コピー", "send": "送信", "encrypt": "暗号化", "decrypt": "復号",
   "passphrase": "共有パスフレーズ", "plaintext": "暗号化するメッセージ", "incomingEmoji": "受信した絵文字", "clearNow": "今すぐ消去", "cancel": "キャンセル",
+  "conveniencePersistence": "利便性と保存", "alternativeTechnicalModes": "代替の技術モード", "reloadSetupWarning": "設定中にこのページを再読み込みすると、鍵と履歴が消去されます。ハンドシェイクは一度のセッションで完了してください。", "manualTransportStatus": "手動モード：各結果を自分でコピーして送信します。既読通知や配信確認はありません。", "closeContacts": "連絡先を閉じる", "closeSettings": "設定を閉じる",
   "footer": "アカウントなし。メッセージサーバーなし。無言の失敗なし。"
 }

@@ -8,5 +8,6 @@
   "manualStatus": "手动模式", "notConnected": "当前没有直接连接。", "startConversation": "开始对话", "joinConversation": "加入对话",
   "createOffer": "创建提议", "createAnswer": "创建应答", "copy": "复制", "send": "发送", "encrypt": "加密", "decrypt": "解密",
   "passphrase": "共享口令", "plaintext": "要加密的消息", "incomingEmoji": "收到的表情", "clearNow": "立即清除", "cancel": "取消",
+  "conveniencePersistence": "便利与持久化", "alternativeTechnicalModes": "其他技术模式", "reloadSetupWarning": "设置期间重新加载此页面会清除密钥和历史记录。请在一次会话中完成握手。", "manualTransportStatus": "手动模式：每个结果都需要你自行复制并发送。没有已读回执或送达确认。", "closeContacts": "关闭联系人", "closeSettings": "关闭设置",
   "footer": "无需账户。没有消息服务器。错误绝不静默。"
 }

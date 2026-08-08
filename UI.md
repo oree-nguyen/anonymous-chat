@@ -13,7 +13,7 @@ Tài liệu này mô tả toàn bộ giao diện hiện tại của `anonymous-c
 ## 2. Visual direction
 
 - Dark-first, nền gần đen pha xanh than; có light theme.
-- Accent chính neon lime/lime green cho CTA, focus, active state và success.
+- Accent action là neon lime cho CTA, focus và active state. Trạng thái verified/safe dùng một green đậm hơn, không dùng màu safe cho nút bấm.
 - Semantic colors: xanh lục cho safe, vàng cam cho caution/connecting/manual, đỏ cho danger/unverified/error.
 - Glass surfaces: nền bán trong suốt, border mảnh, blur nhẹ, shadow mềm và sâu.
 - Landing có editorial/technical feel: typography lớn, grid bất đối xứng, hero image, ambient blobs, particles, signal line và reveal-on-scroll.
@@ -111,13 +111,12 @@ Theo thứ tự:
 
 1. Workspace heading và nút về landing.
 2. Tab chính `Direct chat`.
-3. Một trigger `Advanced settings` để progressive disclosure.
-4. Advanced sections: TURN, auto-lock, backup, persistence và alternative modes.
-5. `Local contacts` chỉ chứa metadata nickname.
-6. `Local session` proof ở đáy sidebar, nhắc keys nằm trong memory.
+3. `Local contacts` chỉ chứa metadata nickname.
+4. `Local session` proof ở đáy sidebar, nhắc keys nằm trong memory.
 
 ### Workspace header
 
+- Nút `Advanced settings` chỉ hiển thị icon bánh răng, nằm ngay sau nút đổi light/dark theme.
 - Eyebrow `DIRECT WORKSPACE`.
 - Heading `Direct chat`.
 - Status card: `Manual mode`, `Connecting directly` hoặc `Direct P2P connection`.
@@ -171,13 +170,14 @@ Card `02 Join a conversation`:
 - Camera track phải dừng sau successful scan, stop, pagehide hoặc lỗi.
 - `Create answer`.
 
-Sau khi tạo answer: readonly answer code, `Copy`, `Share link`, `Show QR`, và IP disclosure alert màu vàng. Alert nói P2P lộ IP peer, Google STUN thấy IP lúc connect nhưng không mang message content.
+Ngay khi preview tên người gửi xuất hiện, IP disclosure alert màu vàng phải hiện trước nút `Create answer`. Alert nói P2P lộ IP peer, Google STUN thấy IP lúc connect nhưng không mang message content. Sau khi tạo answer, UI vẫn có readonly answer code, `Copy`, `Share link` và `Show QR`.
 
 ### Step 3: safety verification
 
 Chat main bị ẩn, chỉ security card centered max-width khoảng 680px:
 
 - Security state banner danger/unverified.
+- Nền workspace tối hơn một bậc và ambient particles/blobs tắt hoàn toàn trong bước này. Card có border 2px danger khi chưa xác nhận và caution khi local side đã xác nhận.
 - Heading `Verify your peer`.
 - Đọc safety number của mình cho peer qua kênh khác; nhập số peer đọc lại, không tự gõ số của mình.
 - Bắt buộc delay 8 giây; xác nhận trước 15 giây cho soft warning.
@@ -224,7 +224,7 @@ Khi vượt 1.000 positions hoặc key đã destroy:
 
 ## 8. Advanced settings
 
-`Advanced settings` là accordion ẩn mặc định.
+`Advanced settings` là native dialog ẩn mặc định, mở từ nút icon trên header. Dialog nằm chính giữa, gần full viewport và dùng cùng một khoảng cách cho cả bốn mép để giữ hình chữ nhật cân theo tỉ lệ màn hình. Nội dung chia hai cột trên desktop và một cột trên mobile với hai nhóm `Convenience & persistence` và `Alternative technical modes`. Có thể đóng bằng nút đóng, phím Escape hoặc backdrop.
 
 ### TURN relay
 
@@ -260,6 +260,8 @@ Cuối panel có tabs `Manual passphrase` và `One-time pad`.
 
 Panel heading + two-column form.
 
+Đầu panel có một dòng mono giải thích đây là công cụ thủ công: người dùng tự copy/send từng kết quả, không có read receipt hoặc delivery confirmation.
+
 ### Encrypt
 
 - Shared passphrase password input.
@@ -292,11 +294,11 @@ Breakpoint chính khoảng 768px:
 - Landing hero từ hai cột thành một cột.
 - Workspace thành một cột.
 - Sidebar thành top mode rail với các tab gọn.
-- Contacts, local proof và workspace heading ẩn trên mobile.
+- Contacts list trong sidebar, local proof và workspace heading ẩn trên mobile. Một nút `Local contacts` trong mode rail mở dialog/sheet riêng; chọn contact sẽ đưa người dùng vào Start flow.
 - Khi verifying/chatting, nav ẩn; chat chiếm gần toàn bộ màn hình.
 - Chat header có `Back` để về role picker.
 - Two-column forms thành một cột; role buttons xếp dọc khi hẹp.
-- Header mobile rút gọn brand, language selector và clear-session thành phần compact.
+- Header mobile rút gọn brand, language selector, settings icon và clear-session thành phần compact. Settings dialog chuyển thành một cột nhưng vẫn giữ khoảng cách bốn mép bằng nhau.
 - QR scanner, safety number, composer và error toast không được tràn ngang hoặc bị keyboard che.
 
 ## 12. Motion
@@ -304,13 +306,13 @@ Breakpoint chính khoảng 768px:
 - Hero staggered fade-up.
 - Sections reveal khi scroll.
 - Ambient blobs drift, hero image parallax nhẹ.
-- Buttons hover/press/magnetic trên desktop pointer fine.
+- Buttons chỉ dùng hover/press nhẹ; không có magnetic pointer tracking.
 - Connecting dot pulse, error toast slide/fade, message bubble fade-up.
 - Luôn có text thay cho animation; tắt/giảm tất cả motion với reduced-motion.
 
 ## 13. Component inventory
 
-`PrivacyBanner`, `SiteHeader`, `LanguageSelect`, `ThemeToggle`, `LandingHero`, `TrustConsole`, `BentoTrustGrid`, `HowItWorksSteps`, `HonestLimits`, `WorkspaceShell`, `WorkspaceSidebar`, `AdvancedSettingsAccordion`, `ConnectionStatus`, `HandshakeProgress`, `RolePicker`, `SessionRestoreCard`, `OfferCard`, `AnswerCard`, `QrDisplay`, `QrScanner`, `IpDisclosure`, `SafetyVerificationCard`, `ChatPanel`, `MessageList`, `MessageBubble`, `Composer`, `ManualFallbackPanel`, `RatchetRecovery`, `ManualPassphrasePanel`, `WeakPassphraseOverride`, `OtpPanel`, `AutoLockOverlay`, `ErrorToast`, `ClearSessionDialog`.
+`PrivacyBanner`, `SiteHeader`, `LanguageSelect`, `ThemeToggle`, `SettingsButton`, `LandingHero`, `TrustConsole`, `BentoTrustGrid`, `HowItWorksSteps`, `HonestLimits`, `WorkspaceShell`, `WorkspaceSidebar`, `AdvancedSettingsDialog`, `ConnectionStatus`, `HandshakeProgress`, `RolePicker`, `SessionRestoreCard`, `OfferCard`, `AnswerCard`, `QrDisplay`, `QrScanner`, `IpDisclosure`, `SafetyVerificationCard`, `ChatPanel`, `MessageList`, `MessageBubble`, `Composer`, `ManualFallbackPanel`, `RatchetRecovery`, `ManualPassphrasePanel`, `WeakPassphraseOverride`, `OtpPanel`, `AutoLockOverlay`, `ErrorToast`, `ClearSessionDialog`.
 
 ## 14. Accessibility
 

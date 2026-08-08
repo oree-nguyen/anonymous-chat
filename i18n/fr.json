@@ -8,5 +8,6 @@
   "manualStatus": "Mode manuel", "notConnected": "Aucune connexion directe active.", "startConversation": "Démarrer une conversation", "joinConversation": "Rejoindre une conversation",
   "createOffer": "Créer une offre", "createAnswer": "Créer une réponse", "copy": "Copier", "send": "Envoyer", "encrypt": "Chiffrer", "decrypt": "Déchiffrer",
   "passphrase": "Phrase secrète partagée", "plaintext": "Message à chiffrer", "incomingEmoji": "Emoji reçus", "clearNow": "Effacer", "cancel": "Annuler",
+  "conveniencePersistence": "Confort et persistance", "alternativeTechnicalModes": "Modes techniques alternatifs", "reloadSetupWarning": "Recharger cette page pendant la configuration efface vos clés et votre historique. Terminez la poignée de main en une seule session.", "manualTransportStatus": "Mode manuel : vous copiez et envoyez chaque résultat vous-même. Il n’y a ni accusé de lecture ni confirmation de livraison.", "closeContacts": "Fermer les contacts", "closeSettings": "Fermer les paramètres",
   "footer": "Aucun compte. Aucun serveur de messages. Aucun échec silencieux."
 }

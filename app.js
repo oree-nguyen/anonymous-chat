@@ -111,12 +111,15 @@ function updateProfileControls() {
 
 function showPeerPreview(element, name, key) {
   if (!element) return;
+  const disclosure = element.id === 'offer-sender-preview' ? element.closest('.workflow-block')?.querySelector('.ip-disclosure') : null;
   if (!name) {
     element.classList.add('is-hidden');
+    disclosure?.classList.add('is-hidden');
     return;
   }
   element.textContent = t(key).replace('{name}', name);
   element.classList.remove('is-hidden');
+  disclosure?.classList.remove('is-hidden');
 }
 
 function handshakeLink(code) {
@@ -289,20 +292,6 @@ function setupVisualEffects() {
     });
   });
 
-  if (!matchMedia('(pointer: coarse)').matches) {
-    document.querySelectorAll('[data-magnetic]').forEach((button) => {
-      button.addEventListener('pointermove', (event) => {
-        const bounds = button.getBoundingClientRect();
-        button.style.setProperty('--magnetic-x', `${(event.clientX - (bounds.left + bounds.width / 2)) * 0.12}px`);
-        button.style.setProperty('--magnetic-y', `${(event.clientY - (bounds.top + bounds.height / 2)) * 0.12}px`);
-      });
-      button.addEventListener('pointerleave', () => {
-        button.style.setProperty('--magnetic-x', '0px');
-        button.style.setProperty('--magnetic-y', '0px');
-      });
-    });
-  }
-
   const hero = $('.hero');
   const heroImage = $('.hero-backdrop img');
   if (hero && heroImage && !prefersReducedMotion()) {
@@ -337,6 +326,7 @@ function toggleElements(elements, hidden) {
 
 function setHandshakeStage(stage) {
   handshakeStage = stage;
+  document.body.dataset.handshakeStage = stage;
   const rolePicker = $('#handshake-role-picker');
   const setup = $('#live-setup');
   const starter = $('#create-offer')?.closest('.workflow-block');
@@ -380,7 +370,8 @@ function setHandshakeStage(stage) {
       const ip = joiner.querySelector('.ip-disclosure');
       toggleElements([offerLabel, offer, create], stage !== 'b-paste');
       toggleElements([$('#answer-output-block')], stage !== 'b-response');
-      toggleElements([ip], stage !== 'b-response');
+      const senderKnown = !$('#offer-sender-preview')?.classList.contains('is-hidden');
+      toggleElements([ip], !['b-paste', 'b-response'].includes(stage) || !senderKnown);
     }
 
     const verifying = stage === 'verifying';
@@ -475,6 +466,7 @@ function updateSecurityState() {
   if (!state || !label || !message || !send || !confirm) return;
 
   const ready = Boolean(sendRatchet && safetyConfirmed);
+  $('#chat-area').dataset.verification = safetyConfirmed ? 'safe' : localSafetyConfirmed || remoteSafetyConfirmed ? 'pending' : 'unverified';
   const securityMode = !safetyConfirmed ? 'unverified' : connectionMode === 'manual' ? 'manual' : 'safe';
   const labelKey = securityMode === 'safe' ? 'safeState' : securityMode === 'manual' ? 'manualState' : 'unverifiedState';
   state.dataset.state = securityMode;
@@ -530,6 +522,7 @@ function completeSafetyIfMutual() {
 
 function handleVerificationAck() {
   remoteSafetyConfirmed = true;
+  updateSecurityState();
   completeSafetyIfMutual();
 }
 
@@ -675,33 +668,47 @@ async function initializeSessionPersistence() {
 function populateContacts() {
   const list = $('#saved-contacts');
   const visibleList = $('#contact-list');
+  const mobileList = $('#mobile-contact-list');
   list.replaceChildren();
   visibleList?.replaceChildren();
+  mobileList?.replaceChildren();
   let count = 0;
+
+  const selectContact = (nickname, closeDialog = false) => {
+    $('#contact-name').value = nickname;
+    handshakeRole = 'start';
+    setView('app');
+    setHandshakeStage('a-enter');
+    if (closeDialog) $('#mobile-contacts-dialog')?.close();
+    $('#contact-name').focus();
+  };
+
+  const appendContactButton = (container, nickname, closeDialog = false) => {
+    if (!container) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'contact-button';
+    button.textContent = nickname;
+    button.addEventListener('click', () => selectContact(nickname, closeDialog));
+    container.append(button);
+  };
+
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
     if (!key?.startsWith(`${STORAGE_PREFIX}conversation:`)) continue;
     const option = document.createElement('option');
     option.value = key.slice(`${STORAGE_PREFIX}conversation:`.length);
     list.append(option);
-    if (visibleList) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'contact-button';
-      button.textContent = option.value;
-      button.addEventListener('click', () => {
-        $('#contact-name').value = option.value;
-        setView('app');
-        $('#contact-name').focus();
-      });
-      visibleList.append(button);
-    }
+    appendContactButton(visibleList, option.value);
+    // Mobile keeps contacts out of the primary rail but exposes them in a focused sheet.
+    appendContactButton(mobileList, option.value, true);
     count += 1;
   }
-  if (visibleList && count === 0) {
+  if (count === 0) {
     const empty = document.createElement('p');
     empty.textContent = t('noContacts');
-    visibleList.append(empty);
+    visibleList?.append(empty.cloneNode(true));
+    mobileList?.append(empty);
   }
 }
 
@@ -1028,18 +1035,26 @@ document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click',
     document.querySelectorAll('.mode-panel').forEach((panel) => panel.classList.add('is-hidden'));
     $(`#${tab.dataset.mode}-panel`).classList.remove('is-hidden');
     const advanced = $('#advanced-panel');
-    if (tab.dataset.mode !== 'live') {
-      advanced?.classList.remove('is-hidden');
-      $('#advanced-settings')?.setAttribute('aria-expanded', 'true');
-    }
+    if (tab.dataset.mode !== 'live' && advanced?.open) advanced.close();
   });
 }));
 
 $('#advanced-settings').addEventListener('click', () => {
   const panel = $('#advanced-panel');
-  const expanded = $('#advanced-settings').getAttribute('aria-expanded') === 'true';
-  panel.classList.toggle('is-hidden', expanded);
-  $('#advanced-settings').setAttribute('aria-expanded', String(!expanded));
+  if (!panel.open) {
+    panel.showModal();
+    $('#advanced-settings').setAttribute('aria-expanded', 'true');
+  }
+});
+$('#close-settings').addEventListener('click', () => $('#advanced-panel').close());
+$('#advanced-panel').addEventListener('close', () => $('#advanced-settings').setAttribute('aria-expanded', 'false'));
+$('#advanced-panel').addEventListener('click', (event) => {
+  if (event.target === $('#advanced-panel')) $('#advanced-panel').close();
+});
+$('#mobile-contacts-trigger').addEventListener('click', () => $('#mobile-contacts-dialog').showModal());
+$('#close-mobile-contacts').addEventListener('click', () => $('#mobile-contacts-dialog').close());
+$('#mobile-contacts-dialog').addEventListener('click', (event) => {
+  if (event.target === event.currentTarget) event.currentTarget.close();
 });
 
 $('#remember-session').addEventListener('change', async (event) => {
