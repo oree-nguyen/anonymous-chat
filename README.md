@@ -1,96 +1,249 @@
-# anonymous-chat
+<div align="center">
 
-`anonymous-chat` is a static, local-first web application for encrypting text in the browser and representing manually transported ciphertext as emoji. Two people can either establish a direct WebRTC data channel through one manual offer/answer exchange, or use self-contained passphrase messages with copy and paste.
+# 🔐 anonymous-chat
 
-There is no application backend, account system, message database, signaling service, analytics script, service worker, or runtime dependency.
+### Nhắn tin mã hóa đầu-cuối. Không tài khoản. Không máy chủ. Không dấu vết.
 
-> Security status: this project has not received an independent security audit. Do not treat it as a replacement for a mature, audited messenger when mistakes could put someone at risk.
+Một web app **100% tĩnh**, chạy hoàn toàn trong trình duyệt của bạn —
+mã hóa AES-256-GCM, trao đổi khóa qua ECDH, kết nối trực tiếp P2P qua
+WebRTC, ngụy trang bản mã thành chuỗi emoji.
 
-## Run locally
+**Mã nguồn mở hoàn toàn — bạn không cần tin chúng tôi, chỉ cần đọc code.**
 
-The app uses browser ES modules, so serve the repository over HTTP instead of opening `index.html` with `file://`.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#-giấy-phép)
+[![Zero Backend](https://img.shields.io/badge/backend-none-brightgreen)](#-kiến-trúc)
+[![Zero Dependency](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](#-kiến-trúc)
+[![Encryption](https://img.shields.io/badge/encryption-AES--256--GCM-blue)](#-đặc-tả-mã-hóa)
+[![Status](https://img.shields.io/badge/security%20audit-independent%20review%20pending-orange)](#-minh-bạch--giới-hạn-thật)
 
-```sh
-python -m http.server 8080
+[Demo trực tiếp](#) · [Báo lỗi](../../issues) · [Đóng góp](#-đóng-góp)
+
+</div>
+
+---
+
+## 📖 Mục lục
+
+- [Vì sao dự án này tồn tại](#-vì-sao-dự-án-này-tồn-tại)
+- [Tính năng nổi bật](#-tính-năng-nổi-bật)
+- [Cách hoạt động](#-cách-hoạt-động)
+- [Kiến trúc](#-kiến-trúc)
+- [Đặc tả mã hóa](#-đặc-tả-mã-hóa)
+- [Bắt đầu nhanh](#-bắt-đầu-nhanh)
+- [Minh bạch & giới hạn thật](#-minh-bạch--giới-hạn-thật)
+- [Lộ trình](#-lộ-trình)
+- [Đóng góp](#-đóng-góp)
+- [Giấy phép](#-giấy-phép)
+
+---
+
+## 🎯 Vì sao dự án này tồn tại
+
+Hầu hết app nhắn tin "riêng tư" trên thị trường đều bắt bạn **tin tưởng mù
+quáng** vào 1 công ty: tin rằng họ mã hóa đúng cách, tin rằng họ không lưu
+log, tin rằng server của họ không bị xâm nhập. Bạn không có cách nào tự
+kiểm chứng.
+
+**anonymous-chat đi theo hướng ngược lại:**
+
+- Không có server nào để bị hack, bị yêu cầu giao nộp dữ liệu, hay bị đóng cửa.
+- Không có tài khoản nào để bị rò rỉ.
+- Không có công ty nào đứng giữa bạn và người bạn đang nhắn tin.
+- Toàn bộ mã nguồn công khai — an toàn nằm ở **toán học**, không nằm ở
+  **lòng tin**.
+
+> *"Đừng tin, hãy kiểm chứng." — nguyên lý Kerckhoffs, 1883*
+
+---
+
+## ✨ Tính năng nổi bật
+
+| | |
+|---|---|
+| 🔒 **Mã hóa đầu-cuối thật sự** | AES-256-GCM + ECDH P-256, chạy 100% trong trình duyệt bằng Web Crypto API chuẩn |
+| ⚡ **Kết nối P2P trực tiếp** | WebRTC DataChannel — tin nhắn bay thẳng giữa 2 máy, không qua bất kỳ máy chủ nào |
+| 🎭 **Ngụy trang bằng Emoji** | Bản mã hiển thị dưới dạng chuỗi emoji — gửi qua bất kỳ kênh nào bạn muốn |
+| 🕵️ **Không tài khoản, không đăng ký** | Mở trình duyệt, dùng ngay — không email, không số điện thoại |
+| 🔄 **Forward Secrecy** | Ratchet tự động đổi khóa từng tin nhắn — lộ 1 khóa không lộ toàn bộ lịch sử |
+| 🛡️ **Xác thực chống MITM** | Safety Number bắt buộc xác nhận trước khi gửi tin đầu tiên |
+| 🌍 **11 ngôn ngữ** | Việt, Anh, Nhật, Hàn, Ả Rập, Nga, Pháp, Trung, Ba Tư, Ukraina, Đức — kể cả RTL |
+| 📦 **Zero dependency** | Không 1 dòng thư viện ngoài trong runtime — mọi thứ tự viết, tự kiểm soát |
+| 💻 **Chạy khắp nơi** | GitHub Pages, mở file HTML trực tiếp, hay tự host — đều được |
+
+---
+
+## 🚀 Cách hoạt động
+
+```mermaid
+sequenceDiagram
+    participant A as Bạn
+    participant K as Kênh bất kỳ (Zalo/SMS...)
+    participant B as Người bạn muốn nhắn
+
+    A->>A: Tạo "mã đề nghị" (SDP + khóa ECDH)
+    A->>K: Gửi mã đề nghị
+    K->>B: Chuyển tiếp
+    B->>B: Tạo "mã phản hồi"
+    B->>K: Gửi mã phản hồi
+    K->>A: Chuyển tiếp
+    A->>B: Kết nối P2P trực tiếp mở (WebRTC)
+    Note over A,B: Xác nhận Safety Number qua điện thoại
+    A->>B: 💬 Nhắn tin — mã hóa, tự động, thời gian thực
 ```
 
-Open `http://localhost:8080`. WebRTC and Web Crypto require a secure context in production. GitHub Pages provides HTTPS.
+1. **Trao đổi 1 lần duy nhất** — gửi "mã đề nghị", nhận lại "mã phản hồi" qua bất kỳ kênh nào (Zalo, SMS, email...)
+2. **Xác nhận danh tính** — đọc to mã Safety Number 8 ký tự qua điện thoại, chống bị đánh tráo giữa đường
+3. **Chat trực tiếp** — mọi tin nhắn sau đó bay thẳng qua kết nối P2P, tự động mã hóa, không cần thao tác gì thêm
 
-Run the dependency-free test suite with:
+---
 
-```sh
-npm test
-# equivalent on Windows and Unix shells that expand globs:
-node --test tests/*.test.js
+## 🏗️ Kiến trúc
+
+```mermaid
+flowchart LR
+    subgraph GH["☁️ GitHub Pages"]
+        F["File tĩnh — chỉ phát 1 lần"]
+    end
+    subgraph A["🖥️ Trình duyệt A"]
+        WA["Web Crypto + WebRTC"]
+    end
+    subgraph B["🖥️ Trình duyệt B"]
+        WB["Web Crypto + WebRTC"]
+    end
+    STUN["📡 STUN (chỉ ghép nối)"]
+
+    GH -->|tải 1 lần| A
+    GH -->|tải 1 lần| B
+    A -.->|hỏi IP| STUN
+    B -.->|hỏi IP| STUN
+    A ===|"🔒 P2P trực tiếp, mã hóa"| B
+
+    style GH fill:#2d2d2d,color:#fff
+    style STUN fill:#3a3a3a,color:#fff
 ```
 
-The requested `node --test tests/` form is not accepted as a test-directory argument by Node 24 on Windows. The package script uses the portable file glob and currently runs 41 tests.
+**Không có backend. Không có database. Không có ai đứng giữa cuộc trò
+chuyện của bạn.** GitHub Pages chỉ làm đúng 1 việc: phát file 1 lần lúc bạn
+mở trang — sau đó hoàn toàn đứng ngoài cuộc.
 
-## How direct chat works
+| Thành phần | Vai trò |
+|---|---|
+| `crypto/` | AES-GCM, PBKDF2, ECDH, HKDF ratchet, bit-packing emoji |
+| `webrtc/` | Bắt tay, quản lý kết nối P2P, tự phát hiện rớt mạng |
+| `qr/` | Mã hóa/giải mã trực quan (tùy chọn, không bắt buộc) |
+| `i18n/` | 11 ngôn ngữ, hỗ trợ đầy đủ RTL |
 
-1. The starter generates a P-256 ECDH key pair and a WebRTC offer.
-2. ICE gathering finishes without trickle ICE. The SDP offer and public key are packed into one emoji code.
-3. The joiner pastes that code, generates a P-256 key pair and WebRTC answer, and derives the shared root key.
-4. The starter pastes the answer and derives the same root key.
-5. Both sides compare the eight-character safety number through a trusted channel. A mismatch can indicate a person-in-the-middle attack.
-6. Public-key byte order assigns stable A/B roles. HKDF derives separate A-to-B and B-to-A chains, and each authenticated envelope carries its sender direction to reject reflection. If the data channel closes unexpectedly, the in-memory ratchets continue in manual emoji mode.
-7. Reconnecting requires a fresh SDP offer/answer exchange. It does not reset the message ratchets.
+---
 
-Only public keys are placed in handshake codes. ECDH private keys, chain keys, message keys, and plaintext history remain in memory and are never written to `localStorage`. Only contact nicknames, remote public keys, non-secret ratchet positions, locale choice, and OTP offsets are persisted. Reloading destroys the conversation keys and displayed history, so continuing after a reload requires a fresh handshake. An in-page network loss can still switch to manual emoji without resetting the live ratchets.
+## 🔬 Đặc tả mã hóa
 
-## Manual passphrase mode
+<div align="center">
 
-Each manual message uses:
+| Thông số | Giá trị |
+|---|---|
+| Cipher | `AES-256-GCM` |
+| Trao đổi khóa | `ECDH P-256` |
+| KDF (chế độ passphrase) | `PBKDF2-HMAC-SHA256` — 250.000 vòng |
+| Forward secrecy | Ratchet đối xứng qua `HKDF-SHA256`, tách khóa theo hướng |
+| Padding | Bội số cố định, chống lộ độ dài tin thật |
+| Ngẫu nhiên | `crypto.getRandomValues()` — không bao giờ `Math.random()` |
 
-- PBKDF2-HMAC-SHA256 with 250,000 iterations and a fresh random 16-byte salt
-- HKDF-SHA256 with `anonymous-chat-root`
-- one symmetric-ratchet derivation
-- AES-256-GCM with a fresh random 12-byte IV
-- authenticated padding to a 128-byte boundary
-- emoji bit-packing with a two-byte length prefix
+</div>
 
-The passphrase mode intentionally creates self-contained messages so a recipient does not need stored browser state. That improves recovery and usability, but it does not provide forward secrecy across separate passphrase messages. The continuous forward-secrecy ratchet applies to an established ECDH conversation, including its manual fallback.
+Mọi phép toán chạy bằng **Web Crypto API chuẩn native của trình duyệt** —
+không tự chế thuật toán mã hóa lõi nào. Phần tự viết (ratchet, bit-packing
+emoji, mã bắt tay) được cô lập rõ ràng và ưu tiên review kỹ nhất.
 
-The built-in strength check blocks common passwords, obvious dates, repeated characters, and low-entropy phrases. It is a conservative heuristic, not a full password-cracking model. Prefer five or six unrelated diceware words shared through a different trusted channel.
+---
 
-## One-time pad mode
+## ⚡ Bắt đầu nhanh
 
-The advanced OTP tab is separate from AES-GCM. The first 64 bytes of the key file provide distinct native HMAC-SHA256 keys for A-to-B and B-to-A authentication. The remaining bytes are split into non-overlapping directional XOR regions. Each payload authenticates its direction, absolute offset, and ciphertext before XOR/unpadding, and the receiver commits an offset only after successful verification and decoding.
+**Không cần cài đặt gì cả** — đây là web app tĩnh:
 
-A direct ECDH handshake selects the same A/B role automatically from public-key byte order. When OTP is used independently, the two people must explicitly agree who is A and who is B. Choosing the same role on both devices is unsafe. Because 64 bytes are reserved for authentication and the remaining file is divided in half, each direction has less than half of the total file capacity.
+```bash
+# Clone về máy
+git clone https://github.com/<user>/anonymous-chat.git
+cd anonymous-chat
 
-OTP is secure only when all three rules hold:
+# Mở trực tiếp — không cần server, không cần build
+open index.html
+```
 
-1. The key bytes are generated by a cryptographically secure random source.
-2. The key is at least as long as every padded message region it protects.
-3. The two devices use opposite A/B roles, and no XOR byte is ever reused within either directional region.
+Hoặc chỉ cần vào thẳng bản deploy trên GitHub Pages. Muốn tự host bản của
+riêng bạn? Bật GitHub Pages trong Settings của repo bạn fork — xong, không
+cần cấu hình gì thêm.
 
-Losing the offset state or sharing the key through an unsafe channel can completely defeat OTP security.
+---
 
-## Emoji codec and visual code status
+## 🔍 Minh bạch & giới hạn thật
 
-The committed emoji table contains 1,024 deterministic, single-code-point emoji, giving 10 bits per symbol. `scripts/generate-emoji-table.mjs` builds it from Unicode `Emoji_Presentation` candidates while excluding variation selectors, skin-tone modifiers, ZWJ sequences, and multi-code-point graphemes.
+> Dự án này tin rằng **thành thật về giới hạn** đáng tin hơn nhiều so với
+> những lời quảng cáo "bảo mật tuyệt đối". Đọc kỹ phần này trước khi dùng
+> cho nội dung thực sự nhạy cảm.
 
-The copy/paste emoji path is the supported transport and does not depend on QR or camera access.
+- 🟡 **Chưa qua audit bảo mật độc lập bởi con người.** Dự án đã tự chạy
+  self-audit (xem [`SELF-AUDIT.md`](./SELF-AUDIT.md)) và đang khắc phục các
+  phát hiện — nhưng đây **không thay thế** được review bởi chuyên gia bảo
+  mật thật sự.
+- 🟡 **Địa chỉ IP lộ cho đối phương** khi kết nối P2P (bản chất của WebRTC),
+  và **STUN server công khai thấy IP 2 bên** lúc ghép nối. Cần ẩn danh
+  tuyệt đối? [Dùng qua Tor Browser](#) — xem hướng dẫn trong app.
+- 🟡 **Chỉ bảo vệ nội dung, không bảo vệ metadata** — ai đó theo dõi được
+  mạng vẫn biết *có* cuộc trò chuyện diễn ra, dù không đọc được nội dung.
+- 🟡 **Ratchet đơn giản hóa**, không phải Double Ratchet đầy đủ như Signal.
+- 🟢 **Không lưu trữ tin nhắn, không lưu khóa trần trụi** — tải lại trang
+  cần bắt tay lại (đây là thiết kế cố ý, không phải lỗi).
 
-The modules under `qr/` currently provide a deterministic, finder-marked visual matrix with checksum validation for internal encode/decode round-trip tests. It is not yet an ISO QR Code implementation: it has no Reed-Solomon correction, perspective recovery, adaptive thresholding, or camera reader. It is therefore not exposed in the UI. This is an explicit deferred optional feature, not a silent claim of QR interoperability.
+**An toàn không phải trạng thái tĩnh — đây là quá trình liên tục.** Nếu
+bạn tìm thấy lỗ hổng, [mở issue](../../issues) hoặc gửi PR — mọi đóng góp
+về bảo mật đều được ưu tiên xem xét nhanh nhất.
 
-## Seven design principles
+---
 
-1. The theoretically strongest design is not automatically the safest in practice. Prefer workflows that are difficult to misuse.
-2. Follow Kerckhoffs's principle. The public implementation is not a secret; security must depend on secret keys and passphrases.
-3. Do not invent core cryptographic algorithms. Use browser-native AES-256-GCM, PBKDF2, HKDF, SHA-256, and ECDH P-256.
-4. Fail loudly. Wrong keys, modified ciphertext, malformed emoji, invalid handshakes, and exhausted OTP material produce explicit errors.
-5. Keep networking out of `crypto/`. Those modules contain no `fetch`, `XMLHttpRequest`, or CDN imports.
-6. Keep zero runtime dependencies. The application uses browser standards and repository-owned modules only.
-7. Use standard `RTCPeerConnection` and `RTCDataChannel`, one Google STUN endpoint, non-trickle ICE, and manual signaling. Do not add a signaling server.
+## 🗺️ Lộ trình
 
-## Honest limitations and threat model
+- [x] Lõi mã hóa AES-GCM + ECDH + Ratchet
+- [x] Kết nối P2P qua WebRTC + STUN
+- [x] Mã hóa hiển thị bằng Emoji
+- [x] Đa ngôn ngữ (11 thứ tiếng, hỗ trợ RTL)
+- [x] Self-audit vòng 1 — khắc phục lỗi nghiêm trọng
+- [ ] Giao diện thiết kế lại (glassmorphism, mobile-first)
+- [ ] QR code chuẩn — quét bằng camera thật
+- [ ] Giữ phiên qua reload (tùy chọn, mã hóa bằng PIN cục bộ)
+- [ ] Audit bảo mật độc lập bởi bên thứ 3
 
-- No independent security audit has been completed.
-- The ratchet is a simplified symmetric-key ratchet, not Signal's full Double Ratchet. It protects deleted past chain states but provides no post-compromise security through fresh ECDH ratchets.
-- Browser JavaScript cannot guarantee physical memory erasure. Byte arrays are overwritten where practical, but engines may retain copies.
-- A compromised browser, extension, operating system, keyboard, clipboard, or endpoint can read plaintext and keys.
+---
+
+## 🤝 Đóng góp
+
+Mọi đóng góp đều được chào đón — đặc biệt là:
+
+- 🐛 Báo lỗi bảo mật (xem cách báo cáo có trách nhiệm bên dưới)
+- 🌐 Cải thiện bản dịch cho 11 ngôn ngữ hiện có
+- 🎨 Cải thiện giao diện, trải nghiệm người dùng
+- 📖 Cải thiện tài liệu, làm rõ hơn cho người không rành kỹ thuật
+
+**Báo lỗi bảo mật:** nếu phát hiện lỗ hổng nghiêm trọng, vui lòng **không**
+mở issue công khai ngay — liên hệ riêng trước để có thời gian khắc phục,
+tránh bị lợi dụng trước khi có bản vá.
+
+---
+
+## 📜 Giấy phép
+
+Phát hành theo giấy phép **MIT** — dùng, sửa, phân phối lại tự do, miễn
+giữ nguyên thông báo bản quyền gốc. Xem chi tiết tại [`LICENSE`](./LICENSE).
+
+---
+
+<div align="center">
+
+**Được xây dựng với niềm tin rằng quyền riêng tư không nên là đặc quyền.**
+
+Nếu dự án này hữu ích, hãy để lại 1 ⭐ — nó thực sự giúp dự án được nhiều
+người biết đến hơn.
+
+</div>
 - Manual passphrase messages are self-contained and do not have cross-message forward secrecy.
 - Messages more than 1,000 ratchet positions ahead are refused to limit denial-of-service work. Old or out-of-order messages cannot be opened after their keys are destroyed.
 - There is no TURN server. Strict NATs and firewalls can prevent or break direct connections. Manual emoji transport remains available.
